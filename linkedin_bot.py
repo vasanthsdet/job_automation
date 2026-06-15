@@ -64,19 +64,16 @@ class LinkedInBot:
         jsessionid = browser_cookies.get("JSESSIONID", "")
 
         if li_at:
-            # Cookie-based auth — no email/password login, no CHALLENGE triggered
-            # Works from any IP (cloud, VPN, GitHub Actions)
+            # Cookie-based auth — authenticate=True with cookies calls _set_session_cookies()
+            # which sets cookies + csrf-token header without doing email/password login (no CHALLENGE)
             try:
                 self.api = Linkedin(
                     "", "",
-                    authenticate=False,
+                    authenticate=True,
                     cookies={"li_at": li_at, "JSESSIONID": jsessionid},
                 )
                 self.session = self.api.client.session
                 self.session.verify = False
-                # Set csrf-token header from JSESSIONID — required for Voyager API calls
-                csrf = jsessionid.replace('"', '')
-                self.session.headers["csrf-token"] = csrf
                 # Inject remaining cookies (bcookie, bscookie, etc.)
                 extra = {k: v for k, v in browser_cookies.items() if k not in ("li_at", "JSESSIONID")}
                 self.session.cookies.update(extra)
