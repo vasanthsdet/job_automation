@@ -11,6 +11,7 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    environment: jobAlert
     permissions:
       contents: write        # needed to commit applied_jobs.csv back
 
