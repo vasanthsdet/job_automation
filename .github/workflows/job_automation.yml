@@ -64,8 +64,8 @@ jobs:
       - name: Restore resume
         run: echo '${{ secrets.RESUME_BASE64 }}' | base64 -d > resume.docx
 
-      - name: Run job bot
-        run: python main.py
+      - name: Run job bot (collection portals only — LinkedIn blocked on cloud IPs)
+        run: python main.py --collect-only
 
       - name: Save applied_jobs.csv back to repo
         run: |
