@@ -1,0 +1,75 @@
+name: QA Job Automation
+
+on:
+  schedule:
+    - cron: '0 12 * * *'   # 7:00 AM CDT  (UTC-5)
+    - cron: '0 18 * * *'   # 1:00 PM CDT
+    - cron: '0 0 * * *'    # 7:00 PM CDT
+    - cron: '0 6 * * *'    # 1:00 AM CDT
+  workflow_dispatch:         # manual trigger from GitHub UI
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # needed to commit applied_jobs.csv back
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium --with-deps
+
+      - name: Create .env from secrets
+        run: |
+          cat > .env << 'ENVEOF'
+          LINKEDIN_EMAIL=${{ secrets.LINKEDIN_EMAIL }}
+          LINKEDIN_PASSWORD=${{ secrets.LINKEDIN_PASSWORD }}
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          JOB_SEARCH_KEYWORDS=QA,SDET
+          PRIMARY_LOCATION=Texas, United States
+          INCLUDE_REMOTE=true
+          JOB_TYPE=C
+          MAX_JOBS_TO_APPLY=10
+          LISTED_AT_DAYS=1
+          MIN_HOURLY_RATE=50
+          EXPECTED_HOURLY_RATE=50
+          BASE_RESUME_PATH=resume.docx
+          TRACKER_FILE=applied_jobs.csv
+          YEARS_OF_EXPERIENCE=11
+          WORK_AUTHORIZATION=Yes
+          WILLING_TO_RELOCATE=YES
+          ADZUNA_APP_ID=${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY=${{ secrets.ADZUNA_APP_KEY }}
+          EMAIL_SENDER=${{ secrets.EMAIL_SENDER }}
+          EMAIL_APP_PASSWORD=${{ secrets.EMAIL_APP_PASSWORD }}
+          EMAIL_RECIPIENTS=revathibathina11@gmail.com,dama.vasanth@gmail.com
+          ENVEOF
+
+      - name: Restore LinkedIn cookies
+        run: echo '${{ secrets.LINKEDIN_COOKIES }}' > linkedin_cookies.json
+
+      - name: Restore resume
+        run: echo '${{ secrets.RESUME_BASE64 }}' | base64 -d > resume.docx
+
+      - name: Run job bot
+        run: python main.py
+
+      - name: Save applied_jobs.csv back to repo
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add applied_jobs.csv
+          git diff --cached --quiet || git commit -m "chore: update applied_jobs.csv [skip ci]"
+          git push

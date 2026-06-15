@@ -1,0 +1,418 @@
+"""
+LinkedIn job search and Easy Apply — pure HTTP, no browser.
+
+Search strategy:
+  - Run TWO searches per cycle: Dallas (on-site/hybrid) + Remote
+  - Filter: Contract jobs only (JOB_TYPE=C)
+  - Filter: Last 3 days (LISTED_AT_DAYS)
+  - Filter: Hourly rate >= MIN_HOURLY_RATE ($60) parsed from job description
+  - Apply via LinkedIn's Voyager REST API with AI-tailored resume
+"""
+
+import json
+import ssl
+import time
+import random
+import urllib3
+from pathlib import Path
+
+import requests
+from linkedin_api import Linkedin
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+from config import (
+    LINKEDIN_EMAIL, LINKEDIN_PASSWORD,
+    JOB_SEARCH_KEYWORDS, JOB_SEARCH_KEYWORD, PRIMARY_LOCATION, INCLUDE_REMOTE,
+    JOB_TYPE, MIN_HOURLY_RATE, MAX_JOBS_TO_APPLY,
+    BASE_RESUME_PATH, YEARS_OF_EXPERIENCE, WORK_AUTHORIZATION, EXPECTED_HOURLY_RATE,
+    LISTED_AT_SECONDS,
+)
+from job_tracker import JobTracker
+from resume_updater import create_tailored_resume
+from easy_apply_playwright import submit_easy_apply
+from utils import meets_rate
+
+VOYAGER = "https://www.linkedin.com/voyager/api"
+
+
+class LinkedInBot:
+    def __init__(self, tracker: JobTracker):
+        self.tracker = tracker
+        self.api: Linkedin | None = None
+        self.session = None
+        self.applied = 0
+
+    # ── Auth ──────────────────────────────────────────────────
+
+    COOKIES_FILE = "linkedin_cookies.json"
+
+    def _load_browser_cookies(self) -> dict:
+        """Load real browser cookies from file (bypasses JS token requirement)."""
+        p = Path(self.COOKIES_FILE)
+        if p.exists():
+            with open(p) as f:
+                return json.load(f)
+        return {}
+
+    def login(self):
+        print("[LinkedIn] Authenticating via Voyager API...")
+        ssl._create_default_https_context = ssl._create_unverified_context
+        _orig = requests.Session.request
+        def _no_verify(self, method, url, **kw):
+            kw.setdefault("verify", False)
+            return _orig(self, method, url, **kw)
+        requests.Session.request = _no_verify
+        try:
+            self.api = Linkedin(LINKEDIN_EMAIL, LINKEDIN_PASSWORD)
+        finally:
+            requests.Session.request = _orig
+        self.session = self.api.client.session
+        self.session.verify = False
+
+        # Inject real browser cookies if available (enables Easy Apply submit)
+        # Skip JSESSIONID — linkedin-api already sets it; duplicates cause errors
+        browser_cookies = {k: v for k, v in self._load_browser_cookies().items() if k != "JSESSIONID"}
+        if browser_cookies:
+            self.session.cookies.update(browser_cookies)
+            print(f"[LinkedIn] Loaded {len(browser_cookies)} browser cookies — Easy Apply enabled")
+        else:
+            print("[LinkedIn] No browser cookies found — Easy Apply will be detected but not submitted")
+            print(f"           To enable: save Chrome cookies to {self.COOKIES_FILE}")
+        print("[LinkedIn] Authenticated")
+
+    def _headers(self) -> dict:
+        csrf = self.session.cookies.get("JSESSIONID", "").replace('"', "")
+        return {
+            "csrf-token": csrf,
+            "x-restli-protocol-version": "2.0.0",
+            "accept": "application/vnd.linkedin.normalized+json+2.1",
+            "content-type": "application/json",
+        }
+
+    # ── Job search ────────────────────────────────────────────
+
+    def _safe_search(self, label: str, **kwargs) -> list[dict]:
+        try:
+            results = self.api.search_jobs(**kwargs) or []
+            return list(results)
+        except Exception as e:
+            print(f"  [LinkedIn] Search error ({label}): {e}")
+            return []
+
+    # TX city names LinkedIn recognises
+    _TX_CITIES = [
+        "Dallas-Fort Worth Metroplex",
+        "Houston, Texas, United States",
+        "Austin, Texas, United States",
+        "San Antonio, Texas, United States",
+    ]
+
+    # Title must contain at least one of these (case-insensitive) to be kept
+    _QA_TITLE_WORDS = {"qa", "qe", "quality", "test", "sdet", "automation", "tester", "uat"}
+
+    def _is_qa_title(self, title: str) -> bool:
+        t = title.lower()
+        return any(w in t for w in self._QA_TITLE_WORDS)
+
+    def search_jobs(self) -> list[dict]:
+        seen: dict[str, dict] = {}
+        search_count = 0
+
+        for kw in JOB_SEARCH_KEYWORDS:
+            # TX — search each major city
+            for city in self._TX_CITIES:
+                print(f"[LinkedIn] Search: '{kw}' in {city}")
+                if search_count > 0:
+                    time.sleep(random.uniform(4, 8))  # avoid rate limiting
+                results = self._safe_search(
+                    f"{kw}-{city}",
+                    keywords=kw,
+                    location_name=city,
+                    listed_at=LISTED_AT_SECONDS,
+                    limit=25,
+                )
+                search_count += 1
+                before = len(seen)
+                for j in results:
+                    jid = self._job_id(j)
+                    if jid and self._is_qa_title(self._job_title(j)):
+                        seen[jid] = j
+                print(f"  → {len(seen) - before} new QA/SDET results")
+
+            # Remote jobs
+            if INCLUDE_REMOTE:
+                print(f"[LinkedIn] Search: '{kw}' Remote")
+                if search_count > 0:
+                    time.sleep(random.uniform(4, 8))
+                remote = self._safe_search(
+                    f"{kw}-remote",
+                    keywords=kw,
+                    location_name="United States",
+                    remote=["2"],
+                    listed_at=LISTED_AT_SECONDS,
+                    limit=30,
+                )
+                search_count += 1
+                before = len(seen)
+                for j in remote:
+                    jid = self._job_id(j)
+                    if jid and self._is_qa_title(self._job_title(j)):
+                        seen[jid] = j
+                print(f"  → {len(seen) - before} new Remote QA/SDET results")
+
+        all_jobs = list(seen.values())
+        easy_apply = [j for j in all_jobs if self._is_easy_apply(j)]
+        print(f"[LinkedIn] {len(easy_apply)} Easy Apply + {len(all_jobs)-len(easy_apply)} manual jobs ({len(all_jobs)} total)")
+        return all_jobs
+
+    @staticmethod
+    def _is_easy_apply(job: dict) -> bool:
+        return any("ComplexOnsiteApply" in k for k in job.get("applyMethod", {}))
+
+    @staticmethod
+    def _job_id(job: dict) -> str:
+        return job.get("entityUrn", "").split(":")[-1]
+
+    def _get_job_detail(self, job_id: str) -> dict:
+        """Fetch full job detail — description, applicant count, Easy Apply flag."""
+        try:
+            detail = self.api.get_job(job_id)
+            desc = detail.get("description", {}).get("text", "")
+
+            # Applicant count
+            count = detail.get("applies") or detail.get("numApplicants") or 0
+            try:
+                count = int(str(count).replace("+", "").replace(",", "").strip())
+            except (ValueError, TypeError):
+                count = 0
+
+            # Easy Apply — checked from full detail (not search result which omits it)
+            apply_method = detail.get("applyMethod", {})
+            if isinstance(apply_method, dict):
+                is_easy = any("ComplexOnsiteApply" in k for k in apply_method)
+            else:
+                is_easy = False
+
+            # Company name from full detail (more reliable than search result)
+            company = ""
+            try:
+                co_details = detail.get("companyDetails", {})
+                for v in co_details.values():
+                    if isinstance(v, dict):
+                        if "companyResolutionResult" in v:
+                            company = v["companyResolutionResult"].get("name", "")
+                            break
+                        if "name" in v:
+                            company = v["name"]
+                            break
+            except Exception:
+                pass
+
+            return {"description": desc, "applicants": count, "is_easy": is_easy, "company": company}
+        except Exception:
+            return {"description": "", "applicants": 0, "is_easy": False, "company": ""}
+
+    def _job_title(self, job: dict) -> str:
+        return job.get("title", "QA Contract Role")
+
+    def _company_name(self, job: dict) -> str:
+        try:
+            # Search results put company in primaryDescription.text
+            primary = job.get("primaryDescription", {})
+            if isinstance(primary, dict) and primary.get("text"):
+                return primary["text"]
+            # Nested companyDetails
+            co = job.get("companyDetails", {})
+            for v in co.values():
+                if isinstance(v, dict):
+                    if "companyResolutionResult" in v:
+                        return v["companyResolutionResult"].get("name", "")
+                    if "name" in v:
+                        return v["name"]
+            # Last resort: secondaryDescription sometimes has it
+            sec = job.get("secondaryDescription", {})
+            if isinstance(sec, dict) and sec.get("text"):
+                return sec["text"]
+        except Exception:
+            pass
+        return "Unknown"
+
+    def _job_url(self, job_id: str) -> str:
+        return f"https://www.linkedin.com/jobs/view/{job_id}/"
+
+    # ── Easy Apply via Voyager REST API ───────────────────────
+
+    def _upload_resume(self, resume_path: str) -> str | None:
+        try:
+            reg = self.session.post(
+                f"{VOYAGER}/jobs/applyWithEasyApply/resumeUpload",
+                headers=self._headers(),
+                json={
+                    "filename": Path(resume_path).name,
+                    "mediaType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                },
+            )
+            if reg.status_code not in (200, 201):
+                return None
+            data = reg.json()
+            upload_url = data.get("value", {}).get("uploadUrl") or data.get("uploadUrl")
+            media_urn  = data.get("value", {}).get("urn")     or data.get("urn")
+            if not upload_url:
+                return None
+            with open(resume_path, "rb") as f:
+                self.session.put(
+                    upload_url,
+                    data=f.read(),
+                    headers={"Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+                )
+            return media_urn
+        except Exception as e:
+            print(f"  [upload] Failed: {e}")
+            return None
+
+    def _submit_easy_apply(self, job_id: str, resume_path: str) -> bool:
+        job_urn = f"urn:li:fs_jobPosting:{job_id}"
+
+        form_resp = self.session.get(
+            f"{VOYAGER}/jobs/applyWithEasyApply",
+            params={"jobPostingUrn": job_urn},
+            headers=self._headers(),
+        )
+        if form_resp.status_code != 200:
+            print(f"  [apply] Form fetch failed (HTTP {form_resp.status_code})")
+            return False
+
+        media_urn = self._upload_resume(resume_path)
+
+        payload: dict = {
+            "jobPostingUrn": job_urn,
+            "questionsAndAnswers": [],
+            "contactInfo": {"emailAddress": LINKEDIN_EMAIL},
+        }
+        if media_urn:
+            payload["resumeUploadUrn"] = media_urn
+
+        # Auto-answer common contract screening questions
+        try:
+            for q in form_resp.json().get("value", {}).get("questionFields", []):
+                qid   = q.get("fieldId", "").lower()
+                qtype = q.get("fieldType", "")
+                answer: str | int | float | bool = ""
+
+                if any(k in qid for k in ("year", "experience")):
+                    answer = int(YEARS_OF_EXPERIENCE)
+                elif any(k in qid for k in ("hourly", "rate", "pay")):
+                    answer = float(EXPECTED_HOURLY_RATE)
+                elif any(k in qid for k in ("authorized", "eligible", "citizen", "visa")):
+                    answer = WORK_AUTHORIZATION
+                elif any(k in qid for k in ("salary", "compensation")):
+                    answer = float(EXPECTED_HOURLY_RATE)
+                elif any(k in qid for k in ("relocat",)):
+                    answer = "No"
+                elif qtype == "BOOLEAN":
+                    answer = True
+
+                if answer != "":
+                    payload["questionsAndAnswers"].append(
+                        {"questionFieldId": q.get("fieldId", ""), "answer": answer}
+                    )
+        except Exception:
+            pass
+
+        submit_resp = self.session.post(
+            f"{VOYAGER}/jobs/applyWithEasyApply",
+            json=payload,
+            headers=self._headers(),
+        )
+        ok = submit_resp.status_code in (200, 201)
+        if not ok:
+            print(f"  [apply] Submit HTTP {submit_resp.status_code}")
+        return ok
+
+    # ── Main run ──────────────────────────────────────────────
+
+    def run(self):
+        self.login()
+        jobs = self.search_jobs()
+
+        to_process = [
+            j for j in jobs
+            if self._job_id(j) and not self.tracker.already_applied(self._job_id(j))
+        ]
+        print(f"[LinkedIn] {len(to_process)} new jobs to evaluate")
+
+        for job in to_process:
+            if self.applied >= MAX_JOBS_TO_APPLY:
+                print(f"[LinkedIn] Limit of {MAX_JOBS_TO_APPLY} reached")
+                break
+
+            job_id  = self._job_id(job)
+            title   = self._job_title(job)
+            company = self._company_name(job)
+            url     = self._job_url(job_id)
+
+            print(f"\n[LinkedIn] → {title} @ {company}")
+
+            # Fetch description + applicant count + better company name in one call
+            detail      = self._get_job_detail(job_id)
+            description = detail["description"]
+            applicants  = detail["applicants"]
+            # Use detail company name if search result had "Unknown"
+            if company == "Unknown" and detail.get("company"):
+                company = detail["company"]
+                print(f"  [company] Resolved: {company}")
+
+            # ── 100+ applicants gate ──────────────────────────
+            if applicants >= 100:
+                print(f"  [skip] {applicants}+ applicants already")
+                self.tracker.log_application(
+                    platform="LinkedIn", job_id=job_id, title=title,
+                    company=company, url=url,
+                    status=f"Skipped - {applicants}+ Applicants",
+                )
+                continue
+
+            # ── Hourly rate gate ──────────────────────────────
+            if not meets_rate(description, MIN_HOURLY_RATE):
+                print(f"  [skip] Rate below ${MIN_HOURLY_RATE}/hr")
+                self.tracker.log_application(
+                    platform="LinkedIn", job_id=job_id, title=title,
+                    company=company, url=url,
+                    status=f"Skipped - Rate Below ${MIN_HOURLY_RATE}/hr",
+                )
+                continue
+
+            is_easy = detail["is_easy"]
+            if is_easy:
+                print(f"  [Easy Apply] Submitting via Playwright...")
+                try:
+                    tailored = create_tailored_resume(BASE_RESUME_PATH, title, description)
+                    ok = submit_easy_apply(url, tailored)
+                    status = "Easy Apply - Applied" if ok else "Easy Apply - Click to Apply"
+                    self.tracker.log_application(
+                        platform="LinkedIn", job_id=job_id, title=title,
+                        company=company, url=url, status=status,
+                        resume_used=str(tailored),
+                    )
+                    if ok:
+                        self.applied += 1
+                        print(f"  [applied] {title}")
+                    else:
+                        print(f"  [manual] Click link in email to apply")
+                except Exception as e:
+                    print(f"  [playwright] Error: {e}")
+                    self.tracker.log_application(
+                        platform="LinkedIn", job_id=job_id, title=title,
+                        company=company, url=url, status="Easy Apply - Click to Apply",
+                    )
+            else:
+                print(f"  [External Apply] Link in email")
+                self.tracker.log_application(
+                    platform="LinkedIn", job_id=job_id, title=title,
+                    company=company, url=url, status="Collected - External Apply",
+                )
+
+            time.sleep(random.uniform(3, 6))
+
+        print(f"\n[LinkedIn] Done. Applied: {self.applied}")

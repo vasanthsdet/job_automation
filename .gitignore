@@ -1,0 +1,28 @@
+# Secrets & credentials — never commit these
+.env
+linkedin_cookies.json
+
+# Job tracker (committed back by GitHub Actions after each run)
+# applied_jobs.csv   ← keep tracked so history persists
+
+# Logs
+*.log
+task_scheduler.log
+scheduler.log
+
+# Resume (stored as GitHub Secret — not in repo)
+*.docx
+*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Windows
+Thumbs.db
+desktop.ini
+run_job_bot.bat
