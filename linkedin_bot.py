@@ -74,6 +74,9 @@ class LinkedInBot:
                 )
                 self.session = self.api.client.session
                 self.session.verify = False
+                # Set csrf-token header from JSESSIONID — required for Voyager API calls
+                csrf = jsessionid.replace('"', '')
+                self.session.headers["csrf-token"] = csrf
                 # Inject remaining cookies (bcookie, bscookie, etc.)
                 extra = {k: v for k, v in browser_cookies.items() if k not in ("li_at", "JSESSIONID")}
                 self.session.cookies.update(extra)
