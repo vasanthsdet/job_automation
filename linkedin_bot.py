@@ -58,6 +58,31 @@ class LinkedInBot:
     def login(self):
         print("[LinkedIn] Authenticating via Voyager API...")
         ssl._create_default_https_context = ssl._create_unverified_context
+
+        browser_cookies = self._load_browser_cookies()
+        li_at = browser_cookies.get("li_at", "")
+        jsessionid = browser_cookies.get("JSESSIONID", "")
+
+        if li_at:
+            # Cookie-based auth — no email/password login, no CHALLENGE triggered
+            # Works from any IP (cloud, VPN, GitHub Actions)
+            try:
+                self.api = Linkedin(
+                    "", "",
+                    authenticate=False,
+                    cookies={"li_at": li_at, "JSESSIONID": jsessionid},
+                )
+                self.session = self.api.client.session
+                self.session.verify = False
+                # Inject remaining cookies (bcookie, bscookie, etc.)
+                extra = {k: v for k, v in browser_cookies.items() if k not in ("li_at", "JSESSIONID")}
+                self.session.cookies.update(extra)
+                print(f"[LinkedIn] Authenticated via cookies (no login challenge)")
+                return
+            except Exception as e:
+                print(f"[LinkedIn] Cookie auth failed: {e} — falling back to password login")
+
+        # Fall back to email/password login (local machine only — may trigger CHALLENGE on cloud IPs)
         _orig = requests.Session.request
         def _no_verify(self, method, url, **kw):
             kw.setdefault("verify", False)
@@ -69,17 +94,10 @@ class LinkedInBot:
             requests.Session.request = _orig
         self.session = self.api.client.session
         self.session.verify = False
-
-        # Inject real browser cookies if available (enables Easy Apply submit)
-        # Skip JSESSIONID — linkedin-api already sets it; duplicates cause errors
-        browser_cookies = {k: v for k, v in self._load_browser_cookies().items() if k != "JSESSIONID"}
-        if browser_cookies:
-            self.session.cookies.update(browser_cookies)
-            print(f"[LinkedIn] Loaded {len(browser_cookies)} browser cookies — Easy Apply enabled")
-        else:
-            print("[LinkedIn] No browser cookies found — Easy Apply will be detected but not submitted")
-            print(f"           To enable: save Chrome cookies to {self.COOKIES_FILE}")
-        print("[LinkedIn] Authenticated")
+        extra = {k: v for k, v in browser_cookies.items() if k != "JSESSIONID"}
+        if extra:
+            self.session.cookies.update(extra)
+        print("[LinkedIn] Authenticated via email/password")
 
     def _headers(self) -> dict:
         csrf = self.session.cookies.get("JSESSIONID", "").replace('"', "")
