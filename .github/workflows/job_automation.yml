@@ -145,6 +145,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           git add applied_jobs.csv
-          git diff --cached --quiet && exit 0
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { Write-Host "No changes to commit"; exit 0 }
           git commit -m "chore: update applied_jobs.csv [skip ci]"
           git push

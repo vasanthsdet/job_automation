@@ -65,6 +65,7 @@ class LinkedInBot:
         browser_cookies = self._load_browser_cookies()
         li_at = browser_cookies.get("li_at", "")
         jsessionid = browser_cookies.get("JSESSIONID", "")
+        print(f"[LinkedIn] Cookies: {len(browser_cookies)} keys loaded, li_at={'SET' if li_at else 'MISSING'}")
 
         if li_at:
             # Cookie-based auth — authenticate=True with cookies calls _set_session_cookies()
