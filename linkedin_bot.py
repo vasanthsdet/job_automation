@@ -38,8 +38,9 @@ VOYAGER = "https://www.linkedin.com/voyager/api"
 
 
 class LinkedInBot:
-    def __init__(self, tracker: JobTracker):
+    def __init__(self, tracker: JobTracker, skip_tailor: bool = False):
         self.tracker = tracker
+        self.skip_tailor = skip_tailor
         self.api: Linkedin | None = None
         self.session = None
         self.applied = 0
@@ -422,7 +423,11 @@ class LinkedInBot:
             if is_easy:
                 print(f"  [Easy Apply] Submitting via Playwright...")
                 try:
-                    tailored = create_tailored_resume(BASE_RESUME_PATH, title, description)
+                    if self.skip_tailor:
+                        tailored = BASE_RESUME_PATH
+                        print("  [resume] Skipping AI tailor — using base resume")
+                    else:
+                        tailored = create_tailored_resume(BASE_RESUME_PATH, title, description)
                     ok = submit_easy_apply(url, tailored)
                     status = "Easy Apply - Applied" if ok else "Easy Apply - Click to Apply"
                     self.tracker.log_application(

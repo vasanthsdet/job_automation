@@ -178,8 +178,7 @@ def _fill_field(page, label_keywords: list[str], value: str):
 
 def _handle_form_page(page) -> bool:
     """Fill current Easy Apply form page. Returns True if we should continue clicking Next."""
-    # Phone / mobile
-    _fill_field(page, ["phone", "mobile", "telephone"], "")
+    # Phone is pre-filled from LinkedIn profile — don't overwrite it
 
     # Years of experience
     _fill_field(page, ["year", "experience", "years of"], YEARS_OF_EXPERIENCE)
@@ -248,7 +247,6 @@ def submit_easy_apply(job_url: str, resume_path: str) -> bool:
             # Navigate to job page
             print(f"  [playwright] Opening job page...")
             page.goto(job_url, wait_until="domcontentloaded", timeout=45000)
-            time.sleep(3)
 
             # Check if we're still logged in
             if "authwall" in page.url or "login" in page.url:
@@ -257,39 +255,45 @@ def submit_easy_apply(job_url: str, resume_path: str) -> bool:
 
             print(f"  [playwright] Page loaded: {page.title()[:80]}")
 
-            # Click Easy Apply button — LinkedIn uses several different selectors
-            EASY_APPLY_SELECTORS = [
-                "button.jobs-apply-button",
-                "button[data-job-id]",
-                "button:has-text('Easy Apply')",
-                "button[aria-label*='Easy Apply' i]",
-                "button[aria-label*='easy apply' i]",
-                # Broader fallback — any top-card apply button
-                ".jobs-unified-top-card__content--two-pane button",
-                ".jobs-apply-button--top-card",
-            ]
+            # Wait for the job detail card to fully render (React SPA)
+            try:
+                page.wait_for_selector(
+                    ".jobs-unified-top-card, .job-details-jobs-unified-top-card__job-title",
+                    timeout=15000,
+                )
+            except Exception:
+                time.sleep(4)  # fallback wait if selector not found
 
+            # Click Easy Apply — it's an <a> tag with aria-label (not a <button>)
+            EASY_APPLY_SELECTORS = [
+                "[aria-label='Easy Apply to this job']",
+                "[aria-label*='Easy Apply' i]",
+                "a:has-text('Easy Apply')",
+                "button:has-text('Easy Apply')",
+                "xpath=//*[@id='jobs-apply-button-id']",
+                ".jobs-apply-button",
+            ]
             clicked = False
             for sel in EASY_APPLY_SELECTORS:
                 try:
                     btn = page.locator(sel).first
-                    btn.wait_for(state="visible", timeout=3000)
-                    btn_text = btn.inner_text().strip().lower()
-                    print(f"  [playwright] Found button: '{btn_text[:40]}' via {sel}")
-                    if "easy apply" in btn_text or "apply" in btn_text:
-                        btn.click()
-                        time.sleep(1.5)
-                        clicked = True
-                        break
+                    btn.wait_for(state="visible", timeout=8000)
+                    btn.click()
+                    time.sleep(1.5)
+                    clicked = True
+                    print(f"  [playwright] Clicked Easy Apply via: {sel}")
+                    break
                 except Exception:
                     pass
 
             if not clicked:
-                # Last resort: dump all visible button texts for debugging
                 try:
-                    buttons = page.locator("button").all()
-                    visible_btns = [b.inner_text().strip() for b in buttons if b.is_visible()]
-                    print(f"  [playwright] Visible buttons: {visible_btns[:10]}")
+                    visible_btns = [
+                        e.inner_text().strip()[:40]
+                        for e in page.locator("button, a[role], [aria-label]").all()
+                        if e.is_visible()
+                    ]
+                    print(f"  [playwright] Visible interactive elements: {visible_btns[:10]}")
                 except Exception:
                     pass
                 print("  [playwright] Easy Apply button not found on page")
@@ -297,56 +301,74 @@ def submit_easy_apply(job_url: str, resume_path: str) -> bool:
 
             # Handle multi-step form (up to 10 pages)
             for step in range(10):
-                time.sleep(1)
+                time.sleep(2)
 
-                # Upload resume if file input visible
+                # Resume step: click "Upload resume" button to activate hidden file input
                 try:
-                    file_input = page.locator("input[type='file']").first
-                    if file_input.is_visible(timeout=1000):
-                        file_input.set_input_files(str(resume_path))
+                    up_btn = page.locator(
+                        "button:has-text('Upload resume'), span:has-text('Upload resume')"
+                    ).first
+                    if up_btn.is_visible(timeout=1000):
+                        up_btn.click()
                         time.sleep(1)
+                        file_input = page.locator("input[type='file']").first
+                        file_input.set_input_files(str(resume_path))
+                        time.sleep(2)
+                        print(f"  [playwright] Uploaded resume: {resume_path}")
                 except Exception:
                     pass
 
-                # Fill form fields
+                # Fill any extra visible text inputs (years of experience, rate, etc.)
+                # Deliberately skip phone — it's pre-filled from LinkedIn profile
                 _handle_form_page(page)
 
-                # Check for Submit button
-                submit_btn = page.locator(
-                    "button:has-text('Submit application'), "
-                    "button[aria-label*='Submit application' i]"
-                ).first
+                # Check for Submit button (last step)
                 try:
-                    if submit_btn.is_visible(timeout=1000):
-                        submit_btn.click()
-                        time.sleep(2)
+                    sub = page.locator("button:has-text('Submit application')").first
+                    if sub.is_visible(timeout=1000):
+                        sub.click()
+                        time.sleep(3)
+                        # Confirm via success modal
+                        try:
+                            page.wait_for_selector(
+                                "text=application was sent, text=Your application was sent",
+                                timeout=5000,
+                            )
+                        except Exception:
+                            pass
                         print(f"  [playwright] Application submitted!")
                         return True
                 except Exception:
                     pass
 
-                # Check for Next / Review button
-                next_btn = page.locator(
-                    "button:has-text('Next'), "
-                    "button:has-text('Review'), "
-                    "button[aria-label*='Continue' i]"
-                ).first
+                # Check for Review button (penultimate step)
                 try:
-                    if next_btn.is_visible(timeout=2000):
-                        next_btn.click()
+                    rev = page.locator("button:has-text('Review')").first
+                    if rev.is_visible(timeout=1000):
+                        rev.click()
                         continue
                 except Exception:
                     pass
 
-                # Check for confirmation modal (already applied / success)
+                # Check for Next button
                 try:
-                    if page.locator("div:has-text('application was sent')").is_visible(timeout=1000):
+                    nxt = page.locator("button:has-text('Next')").first
+                    if nxt.is_visible(timeout=2000):
+                        nxt.click()
+                        continue
+                except Exception:
+                    pass
+
+                # Success confirmation check (sometimes modal appears without re-enter)
+                try:
+                    if page.locator("text=application was sent").is_visible(timeout=1000):
                         print(f"  [playwright] Application confirmed!")
                         return True
                 except Exception:
                     pass
 
-                # No next/submit found — exit loop
+                # No forward button found — bail
+                print(f"  [playwright] Stuck at step {step + 1} — no Next/Review/Submit found")
                 break
 
             print("  [playwright] Could not complete form — flagged for manual apply")

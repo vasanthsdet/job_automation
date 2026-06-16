@@ -84,6 +84,7 @@ def main():
     collect_only  = "--collect-only" in args
     linkedin_only = "--linkedin-only" in args
     dry_run       = "--dry-run" in args
+    skip_tailor   = "--skip-tailor" in args
     portal_filter = None
     if "--portal" in args:
         idx = args.index("--portal")
@@ -114,13 +115,13 @@ def main():
     if not collect_only and not dry_run and not portal_filter:
         print(f"\n── Step {next_step}: LinkedIn Easy Apply ───────────────────────")
         try:
-            LinkedInBot(tracker).run()
+            LinkedInBot(tracker, skip_tailor=skip_tailor).run()
         except Exception as e:
             print(f"[LinkedIn] ERROR: {e}")
     elif linkedin_only and not dry_run:
         print(f"\n── LinkedIn Easy Apply (only) ────────────────────────────")
         try:
-            LinkedInBot(tracker).run()
+            LinkedInBot(tracker, skip_tailor=skip_tailor).run()
         except Exception as e:
             print(f"[LinkedIn] ERROR: {e}")
     elif dry_run:
