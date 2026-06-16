@@ -1,7 +1,7 @@
 """
 LinkedIn Easy Apply via Playwright headless browser.
 
-Loads real browser cookies (linkedin_cookies.json) so no login needed.
+Does a fresh headless login every run to get valid session cookies.
 Called only for jobs flagged as Easy Apply by the HTTP search.
 """
 
@@ -20,22 +20,85 @@ from config import (
 COOKIES_FILE = "linkedin_cookies.json"
 _LINKEDIN    = "https://www.linkedin.com"
 
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/125.0.0.0 Safari/537.36"
+)
 
-def _load_cookies() -> list[dict]:
+# Cached cookies for the current process (login once per run)
+_session_cookies: list[dict] = []
+
+
+def get_fresh_cookies() -> list[dict]:
+    """
+    Login to LinkedIn via headless Chromium and return fresh session cookies.
+    Caches result for the duration of the process so we only log in once per run.
+    """
+    global _session_cookies
+    if _session_cookies:
+        return _session_cookies
+
+    print("  [playwright] Logging in to LinkedIn for fresh session cookies...")
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        ctx = browser.new_context(viewport={"width": 1280, "height": 800}, user_agent=_USER_AGENT)
+        page = ctx.new_page()
+
+        try:
+            page.goto(f"{_LINKEDIN}/login", wait_until="networkidle", timeout=30000)
+            page.fill("#username", LINKEDIN_EMAIL)
+            page.fill("#password", LINKEDIN_PASSWORD)
+            page.click("button[type='submit']")
+            page.wait_for_load_state("networkidle", timeout=30000)
+
+            if "checkpoint" in page.url or "challenge" in page.url:
+                print("  [playwright] LinkedIn requires verification — using stored cookies fallback")
+                browser.close()
+                return _load_stored_cookies()
+
+            if "feed" not in page.url and "jobs" not in page.url and "linkedin.com" not in page.url:
+                print(f"  [playwright] Unexpected post-login URL: {page.url}")
+                browser.close()
+                return _load_stored_cookies()
+
+            cookies = ctx.cookies()
+            # Convert Playwright cookie list → flat dict → save for linkedin-api
+            cookie_dict = {c["name"]: c["value"] for c in cookies}
+            Path(COOKIES_FILE).write_text(json.dumps(cookie_dict, indent=2), encoding="utf-8")
+            print(f"  [playwright] Fresh login OK — {len(cookies)} cookies saved")
+            _session_cookies = cookies
+            return _session_cookies
+
+        except Exception as e:
+            print(f"  [playwright] Login error: {e} — using stored cookies fallback")
+            browser.close()
+            return _load_stored_cookies()
+        finally:
+            try:
+                browser.close()
+            except Exception:
+                pass
+
+
+def _load_stored_cookies() -> list[dict]:
+    """Fall back to linkedin_cookies.json if fresh login fails."""
     p = Path(COOKIES_FILE)
     if not p.exists():
         return []
-    raw = json.loads(p.read_text())
-    # Convert flat dict → Playwright cookie format
-    cookies = []
-    for name, value in raw.items():
-        cookies.append({
-            "name":   name,
-            "value":  str(value),
-            "domain": ".linkedin.com",
-            "path":   "/",
-        })
-    return cookies
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        return [
+            {"name": k, "value": str(v), "domain": ".linkedin.com", "path": "/"}
+            for k, v in raw.items()
+        ]
+    except Exception:
+        return []
+
+
+def _load_cookies() -> list[dict]:
+    """Used by submit_easy_apply — gets fresh cookies (login if needed)."""
+    return get_fresh_cookies() or _load_stored_cookies()
 
 
 def _fill_field(page, label_keywords: list[str], value: str):

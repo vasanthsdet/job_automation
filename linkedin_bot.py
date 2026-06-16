@@ -31,7 +31,7 @@ from config import (
 )
 from job_tracker import JobTracker
 from resume_updater import create_tailored_resume
-from easy_apply_playwright import submit_easy_apply
+from easy_apply_playwright import submit_easy_apply, get_fresh_cookies
 from utils import meets_rate
 
 VOYAGER = "https://www.linkedin.com/voyager/api"
@@ -63,13 +63,14 @@ class LinkedInBot:
         print("[LinkedIn] Authenticating via Voyager API...")
         ssl._create_default_https_context = ssl._create_unverified_context
 
-        browser_cookies = self._load_browser_cookies()
-        li_at = browser_cookies.get("li_at", "")
+        # Get fresh cookies via Playwright headless login (once per run)
+        pw_cookies = get_fresh_cookies()
+        browser_cookies = {c["name"]: c["value"] for c in pw_cookies} if pw_cookies else {}
+        li_at     = browser_cookies.get("li_at", "")
         jsessionid = browser_cookies.get("JSESSIONID", "")
-        print(f"[LinkedIn] Cookies: {len(browser_cookies)} keys loaded, li_at={'SET' if li_at else 'MISSING'}")
+        print(f"[LinkedIn] Cookies: {len(browser_cookies)} keys, li_at={'SET' if li_at else 'MISSING'}")
 
         if li_at:
-            # Cookie-based auth — no email/password login, no CHALLENGE triggered
             try:
                 self.api = Linkedin(
                     "", "",
@@ -79,26 +80,24 @@ class LinkedInBot:
                 self.session = self.api.client.session
                 self.session.verify = False
 
-                # linkedin-api._set_session_cookies does `session.cookies = dict` (plain dict)
-                # which breaks requests with 'dict has no attribute extract_cookies'.
-                # Fix: rebuild a proper RequestsCookieJar from the broken dict.
+                # linkedin-api sets session.cookies as plain dict — rebuild as proper jar
                 if isinstance(self.session.cookies, dict):
                     jar = RequestsCookieJar()
                     for k, v in self.session.cookies.items():
                         jar.set(k, v, domain=".linkedin.com", path="/")
                     self.session.cookies = jar
 
-                # Inject remaining browser cookies (bcookie, bscookie, etc.)
+                # Inject remaining cookies (bcookie, bscookie, etc.)
                 for k, v in browser_cookies.items():
                     if k not in ("li_at", "JSESSIONID"):
                         self.session.cookies.set(k, v, domain=".linkedin.com", path="/")
 
-                print(f"[LinkedIn] Authenticated via cookies (no login challenge)")
+                print("[LinkedIn] Authenticated via fresh cookies")
                 return
             except Exception as e:
                 print(f"[LinkedIn] Cookie auth failed: {e} — falling back to password login")
 
-        # Fall back to email/password login (local machine only — may trigger CHALLENGE on cloud IPs)
+        # Fallback: email/password login
         _orig = requests.Session.request
         def _no_verify(self, method, url, **kw):
             kw.setdefault("verify", False)
@@ -110,9 +109,6 @@ class LinkedInBot:
             requests.Session.request = _orig
         self.session = self.api.client.session
         self.session.verify = False
-        extra = {k: v for k, v in browser_cookies.items() if k != "JSESSIONID"}
-        if extra:
-            self.session.cookies.update(extra)
         print("[LinkedIn] Authenticated via email/password")
 
     def _headers(self) -> dict:
