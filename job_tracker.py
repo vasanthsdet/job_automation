@@ -11,6 +11,7 @@ class JobTracker:
         self.filepath = filepath
         self._applied_ids: set[str] = set()
         self._ensure_file()
+        self._reset_if_new_day()
         self._load_applied_ids()
 
     def _ensure_file(self):
@@ -18,6 +19,22 @@ class JobTracker:
             with open(self.filepath, "w", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
                 writer.writeheader()
+
+    def _reset_if_new_day(self):
+        """Clear the CSV if all entries are from a previous calendar day."""
+        today = datetime.now().date()
+        try:
+            with open(self.filepath, "r", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            if not rows:
+                return
+            last_date = datetime.strptime(rows[-1]["date"], "%Y-%m-%d %H:%M").date()
+            if last_date < today:
+                print(f"[Tracker] New day ({today}) — resetting CSV (last entry was {last_date})")
+                with open(self.filepath, "w", newline="", encoding="utf-8") as f:
+                    csv.DictWriter(f, fieldnames=FIELDNAMES).writeheader()
+        except Exception:
+            pass
 
     def _load_applied_ids(self):
         with open(self.filepath, "r", encoding="utf-8") as f:
