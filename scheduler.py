@@ -107,11 +107,11 @@ def main():
     print("  Ctrl+C to stop")
     print("=" * 56)
 
-    # Fixed 6-hour slots — one run guaranteed between 7-8 AM CST
+    # 4 runs between 7 AM and 7 PM CST — every 4 hours
     schedule.every().day.at("07:00").do(run_cycle)
-    schedule.every().day.at("13:00").do(run_cycle)
+    schedule.every().day.at("11:00").do(run_cycle)
+    schedule.every().day.at("15:00").do(run_cycle)
     schedule.every().day.at("19:00").do(run_cycle)
-    schedule.every().day.at("01:00").do(run_cycle)
 
     next_runs = [str(j.next_run) for j in schedule.jobs]
     _log(f"Scheduled run times (today/tomorrow): {', '.join(next_runs)}")
