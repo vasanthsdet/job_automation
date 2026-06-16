@@ -2,10 +2,10 @@ name: QA Job Automation
 
 on:
   schedule:
-    - cron: '0 12 * * *'   # 7:00 AM CDT  (UTC-5)
-    - cron: '0 16 * * *'   # 11:00 AM CDT
-    - cron: '0 20 * * *'   # 3:00 PM CDT
-    - cron: '0 0 * * *'    # 7:00 PM CDT
+    - cron: '0 13 * * *'   # 7:00 AM CST  (UTC-6)
+    - cron: '0 17 * * *'   # 11:00 AM CST
+    - cron: '0 21 * * *'   # 3:00 PM CST
+    - cron: '0 1 * * *'    # 7:00 PM CST
   workflow_dispatch:         # manual trigger from GitHub UI
 
 jobs:

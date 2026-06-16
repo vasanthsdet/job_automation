@@ -264,9 +264,9 @@ def submit_easy_apply(job_url: str, resume_path: str) -> bool:
             except Exception:
                 time.sleep(4)  # fallback wait if selector not found
 
-            # Click Easy Apply — it's an <a> tag with aria-label (not a <button>)
+            # Click Easy Apply — it's an <a> or <button> with aria-label containing "Easy Apply"
+            # aria-label varies: "Easy Apply to this job", "Easy Apply to <title> at <company>", etc.
             EASY_APPLY_SELECTORS = [
-                "[aria-label='Easy Apply to this job']",
                 "[aria-label*='Easy Apply' i]",
                 "a:has-text('Easy Apply')",
                 "button:has-text('Easy Apply')",
@@ -303,7 +303,8 @@ def submit_easy_apply(job_url: str, resume_path: str) -> bool:
             for step in range(10):
                 time.sleep(2)
 
-                # Resume step: click "Upload resume" button to activate hidden file input
+                # Resume step: upload resume
+                # Case 1: "Upload resume" button that activates a hidden file input
                 try:
                     up_btn = page.locator(
                         "button:has-text('Upload resume'), span:has-text('Upload resume')"
@@ -314,7 +315,16 @@ def submit_easy_apply(job_url: str, resume_path: str) -> bool:
                         file_input = page.locator("input[type='file']").first
                         file_input.set_input_files(str(resume_path))
                         time.sleep(2)
-                        print(f"  [playwright] Uploaded resume: {resume_path}")
+                        print(f"  [playwright] Uploaded resume via button: {resume_path}")
+                except Exception:
+                    pass
+                # Case 2: directly visible file input (some jobs show this)
+                try:
+                    file_input = page.locator("input[type='file']:visible").first
+                    if file_input.is_visible(timeout=500):
+                        file_input.set_input_files(str(resume_path))
+                        time.sleep(2)
+                        print(f"  [playwright] Uploaded resume via file input: {resume_path}")
                 except Exception:
                     pass
 
