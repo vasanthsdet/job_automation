@@ -41,41 +41,92 @@ def get_fresh_cookies() -> list[dict]:
 
     print("  [playwright] Logging in to LinkedIn for fresh session cookies...")
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        ctx = browser.new_context(viewport={"width": 1280, "height": 800}, user_agent=_USER_AGENT)
+        browser = pw.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+            ],
+        )
+        ctx = browser.new_context(
+            viewport={"width": 1280, "height": 800},
+            user_agent=_USER_AGENT,
+            extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
+        )
+        # Hide headless fingerprint
+        ctx.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
         page = ctx.new_page()
 
         try:
-            page.goto(f"{_LINKEDIN}/login", wait_until="domcontentloaded", timeout=30000)
-            time.sleep(2)
-            page.fill("#username", LINKEDIN_EMAIL)
-            page.fill("#password", LINKEDIN_PASSWORD)
-            page.click("button[type='submit']")
-            page.wait_for_load_state("domcontentloaded", timeout=30000)
+            page.goto(f"{_LINKEDIN}/login", wait_until="domcontentloaded", timeout=45000)
             time.sleep(3)
+            print(f"  [playwright] Login page URL: {page.url}")
+
+            # Wait for the visible email input to appear
+            page.wait_for_selector("input[type='email']:visible", timeout=20000)
+
+            # Use :visible to target only the on-screen fields (LinkedIn has hidden decoy inputs)
+            email_input = page.locator("input[type='email']:visible").first
+            email_input.click()
+            time.sleep(0.3)
+            email_input.fill(LINKEDIN_EMAIL)
+            time.sleep(0.5)
+
+            pwd_input = page.locator("input[type='password']:visible").first
+            pwd_input.click()
+            time.sleep(0.3)
+            pwd_input.fill(LINKEDIN_PASSWORD)
+            time.sleep(0.5)
+
+            # Press Enter to submit the email/password form
+            # (avoids accidentally clicking "Sign in with Google/Microsoft" buttons)
+            pwd_input.press("Enter")
+            print("  [playwright] Submitted login form")
+            # Wait for post-login navigation to settle
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=30000)
+            except Exception:
+                pass
+            time.sleep(5)
+            print(f"  [playwright] Post-login URL: {page.url}")
 
             if "checkpoint" in page.url or "challenge" in page.url:
-                print("  [playwright] LinkedIn requires verification — using stored cookies fallback")
-                browser.close()
-                return _load_stored_cookies()
+                print("  [playwright] LinkedIn requires verification — skipping cookie login")
+                return []
 
-            if "feed" not in page.url and "jobs" not in page.url and "linkedin.com" not in page.url:
-                print(f"  [playwright] Unexpected post-login URL: {page.url}")
-                browser.close()
-                return _load_stored_cookies()
-
+            # Check for li_at cookie — presence means login succeeded regardless of URL
             cookies = ctx.cookies()
-            # Convert Playwright cookie list → flat dict → save for linkedin-api
+            li_at = next((c["value"] for c in cookies if c["name"] == "li_at"), "")
+            if not li_at:
+                # Show error from page if any
+                try:
+                    errors = page.locator("[role='alert'], .form__error, [data-error]").all()
+                    for el in errors[:2]:
+                        try:
+                            msg = el.inner_text().strip()
+                            if msg:
+                                print(f"  [playwright] Page error: {msg[:200]}")
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                print(f"  [playwright] No li_at in cookies — login failed (URL: {page.url})")
+                return []
+
+            # Save as flat dict for fallback
             cookie_dict = {c["name"]: c["value"] for c in cookies}
             Path(COOKIES_FILE).write_text(json.dumps(cookie_dict, indent=2), encoding="utf-8")
-            print(f"  [playwright] Fresh login OK — {len(cookies)} cookies saved")
+            print(f"  [playwright] Fresh login OK — {len(cookies)} cookies saved (li_at SET)")
             _session_cookies = cookies
             return _session_cookies
 
         except Exception as e:
-            print(f"  [playwright] Login error: {e} — using stored cookies fallback")
-            browser.close()
-            return _load_stored_cookies()
+            print(f"  [playwright] Login error: {e}")
+            return []
         finally:
             try:
                 browser.close()
@@ -84,12 +135,17 @@ def get_fresh_cookies() -> list[dict]:
 
 
 def _load_stored_cookies() -> list[dict]:
-    """Fall back to linkedin_cookies.json if fresh login fails."""
+    """Load previously saved cookies from file (only if they contain li_at)."""
     p = Path(COOKIES_FILE)
     if not p.exists():
         return []
     try:
-        raw = json.loads(p.read_text(encoding="utf-8"))
+        content = p.read_text(encoding="utf-8").strip().lstrip("﻿")
+        raw = json.loads(content) if content else {}
+        if not raw.get("li_at"):
+            print("  [playwright] Stored cookies have no li_at — skipping fallback")
+            return []
+        print(f"  [playwright] Using stored cookies ({len(raw)} keys)")
         return [
             {"name": k, "value": str(v), "domain": ".linkedin.com", "path": "/"}
             for k, v in raw.items()
@@ -191,7 +247,7 @@ def submit_easy_apply(job_url: str, resume_path: str) -> bool:
         try:
             # Navigate to job page
             print(f"  [playwright] Opening job page...")
-            page.goto(job_url, wait_until="networkidle", timeout=45000)
+            page.goto(job_url, wait_until="domcontentloaded", timeout=45000)
             time.sleep(3)
 
             # Check if we're still logged in

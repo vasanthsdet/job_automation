@@ -86,6 +86,9 @@ class LinkedInBot:
                     for k, v in self.session.cookies.items():
                         jar.set(k, v, domain=".linkedin.com", path="/")
                     self.session.cookies = jar
+                elif not hasattr(self.session.cookies, "set"):
+                    jar = RequestsCookieJar()
+                    self.session.cookies = jar
 
                 # Inject remaining cookies (bcookie, bscookie, etc.)
                 for k, v in browser_cookies.items():
@@ -96,6 +99,8 @@ class LinkedInBot:
                 return
             except Exception as e:
                 print(f"[LinkedIn] Cookie auth failed: {e} — falling back to password login")
+        else:
+            print("[LinkedIn] No fresh li_at — using email/password login")
 
         # Fallback: email/password login
         _orig = requests.Session.request
