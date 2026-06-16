@@ -50,10 +50,13 @@ class LinkedInBot:
     def _load_browser_cookies(self) -> dict:
         """Load real browser cookies from file (bypasses JS token requirement)."""
         p = Path(self.COOKIES_FILE)
-        if p.exists():
-            with open(p) as f:
-                return json.load(f)
-        return {}
+        if not p.exists():
+            return {}
+        try:
+            content = p.read_text(encoding="utf-8").strip().lstrip("﻿")  # strip BOM
+            return json.loads(content) if content else {}
+        except Exception:
+            return {}
 
     def login(self):
         print("[LinkedIn] Authenticating via Voyager API...")

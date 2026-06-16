@@ -125,7 +125,7 @@ jobs:
         shell: powershell
         env:
           LINKEDIN_COOKIES: ${{ secrets.LINKEDIN_COOKIES }}
-        run: $env:LINKEDIN_COOKIES | Out-File -FilePath linkedin_cookies.json -Encoding utf8
+        run: python -c "import os; open('linkedin_cookies.json','w',encoding='utf-8').write(os.environ['LINKEDIN_COOKIES'])"
 
       - name: Restore resume
         shell: powershell
