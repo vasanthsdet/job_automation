@@ -83,11 +83,11 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Python dependencies
-        shell: pwsh
+        shell: powershell
         run: pip install -r requirements.txt; playwright install chromium
 
       - name: Create .env
-        shell: pwsh
+        shell: powershell
         env:
           LINKEDIN_EMAIL:       ${{ secrets.LINKEDIN_EMAIL }}
           LINKEDIN_PASSWORD:    ${{ secrets.LINKEDIN_PASSWORD }}
@@ -122,13 +122,13 @@ jobs:
           "@ | Out-File -FilePath .env -Encoding utf8
 
       - name: Restore LinkedIn cookies
-        shell: pwsh
+        shell: powershell
         env:
           LINKEDIN_COOKIES: ${{ secrets.LINKEDIN_COOKIES }}
         run: $env:LINKEDIN_COOKIES | Out-File -FilePath linkedin_cookies.json -Encoding utf8
 
       - name: Restore resume
-        shell: pwsh
+        shell: powershell
         env:
           RESUME_BASE64: ${{ secrets.RESUME_BASE64 }}
         run: |
@@ -136,11 +136,11 @@ jobs:
           [IO.File]::WriteAllBytes("$PWD\resume.docx", $bytes)
 
       - name: Run LinkedIn Easy Apply
-        shell: pwsh
+        shell: powershell
         run: python main.py --linkedin-only
 
       - name: Commit updated applied_jobs.csv
-        shell: pwsh
+        shell: powershell
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
