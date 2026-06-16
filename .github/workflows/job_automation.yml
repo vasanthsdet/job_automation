@@ -9,30 +9,26 @@ on:
   workflow_dispatch:         # manual trigger from GitHub UI
 
 jobs:
-  run-bot:
+  # ── Job 1: Adzuna + RemoteOK on GitHub cloud ──────────────
+  collect:
     runs-on: ubuntu-latest
     environment: jobAlert
     permissions:
-      contents: write        # needed to commit applied_jobs.csv back
-
+      contents: write
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install chromium --with-deps
+        run: pip install -r requirements.txt
 
-      - name: Create .env from secrets
+      - name: Create .env
         run: |
           cat > .env << 'ENVEOF'
           LINKEDIN_EMAIL=${{ secrets.LINKEDIN_EMAIL }}
@@ -58,19 +54,97 @@ jobs:
           EMAIL_RECIPIENTS=revathibathina11@gmail.com,dama.vasanth@gmail.com
           ENVEOF
 
-      - name: Restore LinkedIn cookies
-        run: echo '${{ secrets.LINKEDIN_COOKIES }}' > linkedin_cookies.json
-
       - name: Restore resume
         run: echo '${{ secrets.RESUME_BASE64 }}' | base64 -d > resume.docx
 
-      - name: Run job bot
-        run: python main.py
+      - name: Run collection portals (Adzuna + RemoteOK)
+        run: python main.py --collect-only
 
-      - name: Save applied_jobs.csv back to repo
+      - name: Commit updated applied_jobs.csv
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           git add applied_jobs.csv
           git diff --cached --quiet || git commit -m "chore: update applied_jobs.csv [skip ci]"
+          git push
+
+  # ── Job 2: LinkedIn on your local Windows machine ─────────
+  # Runs on self-hosted runner — uses your real home IP (no LinkedIn block)
+  linkedin:
+    runs-on: self-hosted
+    environment: jobAlert
+    needs: collect
+    if: always()
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: pip install -r requirements.txt; playwright install chromium
+
+      - name: Create .env
+        shell: pwsh
+        env:
+          LINKEDIN_EMAIL:       ${{ secrets.LINKEDIN_EMAIL }}
+          LINKEDIN_PASSWORD:    ${{ secrets.LINKEDIN_PASSWORD }}
+          ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
+          ADZUNA_APP_ID:        ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY:       ${{ secrets.ADZUNA_APP_KEY }}
+          EMAIL_SENDER:         ${{ secrets.EMAIL_SENDER }}
+          EMAIL_APP_PASSWORD:   ${{ secrets.EMAIL_APP_PASSWORD }}
+        run: |
+          @"
+          LINKEDIN_EMAIL=$env:LINKEDIN_EMAIL
+          LINKEDIN_PASSWORD=$env:LINKEDIN_PASSWORD
+          ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY
+          JOB_SEARCH_KEYWORDS=QA,SDET
+          PRIMARY_LOCATION=Texas, United States
+          INCLUDE_REMOTE=true
+          JOB_TYPE=C
+          MAX_JOBS_TO_APPLY=10
+          LISTED_AT_DAYS=1
+          MIN_HOURLY_RATE=50
+          EXPECTED_HOURLY_RATE=50
+          BASE_RESUME_PATH=resume.docx
+          TRACKER_FILE=applied_jobs.csv
+          YEARS_OF_EXPERIENCE=11
+          WORK_AUTHORIZATION=Yes
+          WILLING_TO_RELOCATE=YES
+          ADZUNA_APP_ID=$env:ADZUNA_APP_ID
+          ADZUNA_APP_KEY=$env:ADZUNA_APP_KEY
+          EMAIL_SENDER=$env:EMAIL_SENDER
+          EMAIL_APP_PASSWORD=$env:EMAIL_APP_PASSWORD
+          EMAIL_RECIPIENTS=revathibathina11@gmail.com,dama.vasanth@gmail.com
+          "@ | Out-File -FilePath .env -Encoding utf8
+
+      - name: Restore LinkedIn cookies
+        shell: pwsh
+        env:
+          LINKEDIN_COOKIES: ${{ secrets.LINKEDIN_COOKIES }}
+        run: $env:LINKEDIN_COOKIES | Out-File -FilePath linkedin_cookies.json -Encoding utf8
+
+      - name: Restore resume
+        shell: pwsh
+        env:
+          RESUME_BASE64: ${{ secrets.RESUME_BASE64 }}
+        run: |
+          $bytes = [Convert]::FromBase64String($env:RESUME_BASE64)
+          [IO.File]::WriteAllBytes("$PWD\resume.docx", $bytes)
+
+      - name: Run LinkedIn Easy Apply
+        shell: pwsh
+        run: python main.py --linkedin-only
+
+      - name: Commit updated applied_jobs.csv
+        shell: pwsh
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add applied_jobs.csv
+          git diff --cached --quiet && exit 0
+          git commit -m "chore: update applied_jobs.csv [skip ci]"
           git push
