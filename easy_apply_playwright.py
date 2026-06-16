@@ -46,11 +46,13 @@ def get_fresh_cookies() -> list[dict]:
         page = ctx.new_page()
 
         try:
-            page.goto(f"{_LINKEDIN}/login", wait_until="networkidle", timeout=30000)
+            page.goto(f"{_LINKEDIN}/login", wait_until="domcontentloaded", timeout=30000)
+            time.sleep(2)
             page.fill("#username", LINKEDIN_EMAIL)
             page.fill("#password", LINKEDIN_PASSWORD)
             page.click("button[type='submit']")
-            page.wait_for_load_state("networkidle", timeout=30000)
+            page.wait_for_load_state("domcontentloaded", timeout=30000)
+            time.sleep(3)
 
             if "checkpoint" in page.url or "challenge" in page.url:
                 print("  [playwright] LinkedIn requires verification — using stored cookies fallback")
