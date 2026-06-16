@@ -232,38 +232,36 @@ def _handle_form_page(page) -> bool:
     return True
 
 
-def submit_easy_apply(job_url: str, resume_path: str) -> bool:
-    """
-    Opens the job URL in a headless browser, clicks Easy Apply,
-    fills the form, uploads resume, and submits.
-    Returns True on success.
-    """
-    cookies = _load_cookies()
-    if not cookies:
-        print("  [playwright] No cookies file — cannot submit Easy Apply")
-        return False
-
+def _do_easy_apply(job_url: str, resume_path: str, cookies: list[dict]) -> bool:
+    """Inner apply logic — runs inside a logged-in browser context."""
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        ctx     = browser.new_context(
+        browser = pw.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+            ],
+        )
+        ctx = browser.new_context(
             viewport={"width": 1280, "height": 800},
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/125.0.0.0 Safari/537.36"
-            ),
+            user_agent=_USER_AGENT,
+            extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
+        )
+        ctx.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
         ctx.add_cookies(cookies)
         page = ctx.new_page()
 
         try:
-            # Navigate to job page
             print(f"  [playwright] Opening job page...")
             page.goto(job_url, wait_until="domcontentloaded", timeout=45000)
 
-            # Check if we're still logged in
-            if "authwall" in page.url or "login" in page.url:
-                print("  [playwright] Session expired — need fresh cookies")
+            # Check if session is still valid
+            if "authwall" in page.url or "/login" in page.url:
+                print("  [playwright] Session expired — cookies are stale")
                 return False
 
             print(f"  [playwright] Page loaded: {page.title()[:80]}")
@@ -402,3 +400,29 @@ def submit_easy_apply(job_url: str, resume_path: str) -> bool:
             return False
         finally:
             browser.close()
+
+
+def submit_easy_apply(job_url: str, resume_path: str) -> bool:
+    """
+    Opens the job URL in a logged-in headless browser, clicks Easy Apply,
+    fills the form, uploads resume, and submits.
+    Automatically re-logins once if the stored session has expired.
+    Returns True on success.
+    """
+    cookies = get_fresh_cookies()
+    if not cookies:
+        print("  [playwright] No valid session — cannot submit Easy Apply")
+        return False
+
+    result = _do_easy_apply(job_url, resume_path, cookies)
+
+    if result is False:
+        # Session may have expired — try a forced fresh login once
+        print("  [playwright] Retrying with fresh login...")
+        cookies = get_fresh_cookies(force_login=True)
+        if not cookies:
+            print("  [playwright] Re-login failed — skipping Easy Apply")
+            return False
+        result = _do_easy_apply(job_url, resume_path, cookies)
+
+    return result or False

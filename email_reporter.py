@@ -50,21 +50,7 @@ def _read_jobs(run_start: datetime | None = None) -> list[dict]:
     if not Path(TRACKER_FILE).exists():
         return []
     with open(TRACKER_FILE, newline="", encoding="utf-8") as f:
-        all_jobs = list(csv.DictReader(f))
-    if run_start is None:
-        return all_jobs
-    # Only return jobs logged during this run (within 1 minute before run_start to now)
-    from datetime import timedelta
-    cutoff = run_start - timedelta(minutes=1)
-    result = []
-    for j in all_jobs:
-        try:
-            job_dt = datetime.strptime(j.get("date", ""), "%Y-%m-%d %H:%M")
-            if job_dt >= cutoff:
-                result.append(j)
-        except ValueError:
-            pass
-    return result  # empty list is fine — don't fall back to all historical jobs
+        return list(csv.DictReader(f))
 
 
 def _build_html(jobs: list[dict], run_start: datetime) -> str:
