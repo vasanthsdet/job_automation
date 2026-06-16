@@ -122,12 +122,6 @@ jobs:
           EMAIL_RECIPIENTS=revathibathina11@gmail.com,dama.vasanth@gmail.com
           "@ | Out-File -FilePath .env -Encoding utf8
 
-      - name: Restore LinkedIn cookies
-        shell: powershell
-        env:
-          LINKEDIN_COOKIES: ${{ secrets.LINKEDIN_COOKIES }}
-        run: python -c "import os; open('linkedin_cookies.json','w',encoding='utf-8').write(os.environ['LINKEDIN_COOKIES'])"
-
       - name: Restore resume
         shell: powershell
         env:
