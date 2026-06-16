@@ -1,9 +1,23 @@
 import os
 import csv
 from datetime import datetime
+from pathlib import Path
+try:
+    from zoneinfo import ZoneInfo
+    _US_CENTRAL = ZoneInfo("America/Chicago")
+except Exception:
+    _US_CENTRAL = None  # fallback: use local time
 
 TRACKER_FILE = "applied_jobs.csv"
+RESET_MARKER = "last_reset_date.txt"
 FIELDNAMES = ["date", "platform", "job_id", "title", "company", "url", "status", "resume_used"]
+
+
+def _today_cdt() -> str:
+    """Return today's date string in US/Central time (CDT/CST)."""
+    if _US_CENTRAL:
+        return datetime.now(_US_CENTRAL).strftime("%Y-%m-%d")
+    return datetime.now().strftime("%Y-%m-%d")
 
 
 class JobTracker:
@@ -17,24 +31,26 @@ class JobTracker:
     def _ensure_file(self):
         if not os.path.exists(self.filepath):
             with open(self.filepath, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
-                writer.writeheader()
+                csv.DictWriter(f, fieldnames=FIELDNAMES).writeheader()
 
     def _reset_if_new_day(self):
-        """Clear the CSV if all entries are from a previous calendar day."""
-        today = datetime.now().date()
+        """Reset CSV once per US/Central calendar day using a marker file.
+
+        Comparing CSV row timestamps is unreliable because GitHub Actions (UTC)
+        and the local Windows machine (CDT) write different timezone offsets.
+        The marker file always stores a CDT date so the boundary is consistent.
+        """
+        today = _today_cdt()
+        marker = Path(RESET_MARKER)
         try:
-            with open(self.filepath, "r", encoding="utf-8") as f:
-                rows = list(csv.DictReader(f))
-            if not rows:
-                return
-            last_date = datetime.strptime(rows[-1]["date"], "%Y-%m-%d %H:%M").date()
-            if last_date < today:
-                print(f"[Tracker] New day ({today}) — resetting CSV (last entry was {last_date})")
-                with open(self.filepath, "w", newline="", encoding="utf-8") as f:
-                    csv.DictWriter(f, fieldnames=FIELDNAMES).writeheader()
+            if marker.exists() and marker.read_text(encoding="utf-8").strip() >= today:
+                return  # Already reset today (CDT)
         except Exception:
             pass
+        print(f"[Tracker] New CDT day ({today}) — resetting CSV")
+        with open(self.filepath, "w", newline="", encoding="utf-8") as f:
+            csv.DictWriter(f, fieldnames=FIELDNAMES).writeheader()
+        marker.write_text(today, encoding="utf-8")
 
     def _load_applied_ids(self):
         with open(self.filepath, "r", encoding="utf-8") as f:

@@ -275,14 +275,18 @@ class LinkedInBot:
             company = ""
             try:
                 co_details = detail.get("companyDetails", {})
-                for v in co_details.values():
-                    if isinstance(v, dict):
-                        if "companyResolutionResult" in v:
-                            company = v["companyResolutionResult"].get("name", "")
-                            break
-                        if "name" in v:
-                            company = v["name"]
-                            break
+                if isinstance(co_details, dict):
+                    for v in co_details.values():
+                        if isinstance(v, dict):
+                            crr = v.get("companyResolutionResult", {})
+                            if isinstance(crr, dict) and crr.get("name"):
+                                company = crr["name"]
+                                break
+                            if v.get("name"):
+                                company = str(v["name"])
+                                break
+                if not company and detail.get("companyName"):
+                    company = str(detail["companyName"])
             except Exception:
                 pass
 
@@ -295,22 +299,23 @@ class LinkedInBot:
 
     def _company_name(self, job: dict) -> str:
         try:
-            # Search results put company in primaryDescription.text
+            # Most reliable in search results: primaryDescription.text
             primary = job.get("primaryDescription", {})
             if isinstance(primary, dict) and primary.get("text"):
                 return primary["text"]
-            # Nested companyDetails
+            # Nested companyDetails (search result variant)
             co = job.get("companyDetails", {})
-            for v in co.values():
-                if isinstance(v, dict):
-                    if "companyResolutionResult" in v:
-                        return v["companyResolutionResult"].get("name", "")
-                    if "name" in v:
-                        return v["name"]
-            # Last resort: secondaryDescription sometimes has it
-            sec = job.get("secondaryDescription", {})
-            if isinstance(sec, dict) and sec.get("text"):
-                return sec["text"]
+            if isinstance(co, dict):
+                for v in co.values():
+                    if isinstance(v, dict):
+                        crr = v.get("companyResolutionResult", {})
+                        if isinstance(crr, dict) and crr.get("name"):
+                            return crr["name"]
+                        if v.get("name"):
+                            return str(v["name"])
+            # Some API responses put it at top level
+            if job.get("companyName"):
+                return str(job["companyName"])
         except Exception:
             pass
         return "Unknown"
@@ -462,31 +467,12 @@ class LinkedInBot:
 
             is_easy = detail["is_easy"]
             if is_easy:
-                print(f"  [Easy Apply] Submitting via Playwright...")
-                try:
-                    if self.skip_tailor:
-                        tailored = BASE_RESUME_PATH
-                        print("  [resume] Skipping AI tailor — using base resume")
-                    else:
-                        tailored = create_tailored_resume(BASE_RESUME_PATH, title, description)
-                    ok = submit_easy_apply(url, tailored)
-                    status = "Easy Apply - Applied" if ok else "Easy Apply - Click to Apply"
-                    self.tracker.log_application(
-                        platform="LinkedIn", job_id=job_id, title=title,
-                        company=company, url=url, status=status,
-                        resume_used=str(tailored),
-                    )
-                    if ok:
-                        self.applied += 1
-                        print(f"  [applied] {title}")
-                    else:
-                        print(f"  [manual] Click link in email to apply")
-                except Exception as e:
-                    print(f"  [playwright] Error: {e}")
-                    self.tracker.log_application(
-                        platform="LinkedIn", job_id=job_id, title=title,
-                        company=company, url=url, status="Easy Apply - Click to Apply",
-                    )
+                # Easy Apply disabled — log for manual apply via the link in the email
+                print(f"  [Easy Apply] Logged for manual apply (auto-submit disabled)")
+                self.tracker.log_application(
+                    platform="LinkedIn", job_id=job_id, title=title,
+                    company=company, url=url, status="Easy Apply - Click to Apply",
+                )
             else:
                 print(f"  [External Apply] Link in email")
                 self.tracker.log_application(
