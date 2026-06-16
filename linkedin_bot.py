@@ -128,11 +128,52 @@ class LinkedInBot:
 
     # ── Job search ────────────────────────────────────────────
 
+    def _relogin_fresh(self):
+        """Force fresh Playwright login and re-authenticate (called on redirect errors)."""
+        import easy_apply_playwright as _ea
+        _ea._session_cookies = []  # clear in-process cache
+        print("[LinkedIn] Re-authenticating with fresh cookies...")
+        pw_cookies = get_fresh_cookies(force_login=True)
+        if not pw_cookies:
+            print("[LinkedIn] Fresh login failed — search will continue to fail")
+            return
+        browser_cookies = {c["name"]: c["value"] for c in pw_cookies}
+        li_at     = browser_cookies.get("li_at", "")
+        jsessionid = browser_cookies.get("JSESSIONID", "")
+        if not li_at:
+            return
+        try:
+            self.api = Linkedin("", "", authenticate=True,
+                                cookies={"li_at": li_at, "JSESSIONID": jsessionid})
+            self.session = self.api.client.session
+            self.session.verify = False
+            if isinstance(self.session.cookies, dict):
+                jar = RequestsCookieJar()
+                for k, v in self.session.cookies.items():
+                    jar.set(k, v, domain=".linkedin.com", path="/")
+                self.session.cookies = jar
+            for k, v in browser_cookies.items():
+                if k not in ("li_at", "JSESSIONID"):
+                    self.session.cookies.set(k, v, domain=".linkedin.com", path="/")
+            print("[LinkedIn] Re-authenticated successfully")
+        except Exception as e:
+            print(f"[LinkedIn] Re-auth failed: {e}")
+
     def _safe_search(self, label: str, **kwargs) -> list[dict]:
         try:
             results = self.api.search_jobs(**kwargs) or []
             return list(results)
         except Exception as e:
+            err = str(e)
+            if "redirect" in err.lower() or "30 redirect" in err:
+                print(f"  [LinkedIn] Auth expired ({label}) — refreshing and retrying...")
+                self._relogin_fresh()
+                try:
+                    results = self.api.search_jobs(**kwargs) or []
+                    return list(results)
+                except Exception as e2:
+                    print(f"  [LinkedIn] Search error ({label}) after re-auth: {e2}")
+                    return []
             print(f"  [LinkedIn] Search error ({label}): {e}")
             return []
 

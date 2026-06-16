@@ -199,6 +199,10 @@ def send_report(run_start: datetime | None = None):
         run_start = datetime.now()
 
     jobs = _read_jobs(run_start)
+    if not jobs:
+        print("[Email] No jobs found this run — skipping email")
+        return
+
     html = _build_html(jobs, run_start)
 
     recipients = [r.strip() for r in EMAIL_RECIPIENTS.split(",") if r.strip()]

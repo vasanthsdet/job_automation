@@ -30,14 +30,33 @@ _USER_AGENT = (
 _session_cookies: list[dict] = []
 
 
-def get_fresh_cookies() -> list[dict]:
+def get_fresh_cookies(force_login: bool = False) -> list[dict]:
     """
-    Login to LinkedIn via headless Chromium and return fresh session cookies.
-    Caches result for the duration of the process so we only log in once per run.
+    Return LinkedIn session cookies.
+    Order of preference:
+      1. In-process cache (same run, already logged in)
+      2. Stored linkedin_cookies.json from a previous run (if < 20 hours old)
+      3. Fresh Playwright headless login (saves new cookies for next run)
+    Pass force_login=True to skip 1 & 2 and always do a fresh login.
     """
     global _session_cookies
-    if _session_cookies:
+    if _session_cookies and not force_login:
         return _session_cookies
+
+    # Try stored cookies from previous run
+    if not force_login:
+        stored = _load_stored_cookies()
+        if stored:
+            try:
+                age_h = (time.time() - Path(COOKIES_FILE).stat().st_mtime) / 3600
+                if age_h < 20:
+                    print(f"  [playwright] Reusing stored cookies (age {age_h:.1f}h)")
+                    _session_cookies = stored
+                    return _session_cookies
+                else:
+                    print(f"  [playwright] Stored cookies {age_h:.1f}h old — fresh login needed")
+            except Exception:
+                pass
 
     print("  [playwright] Logging in to LinkedIn for fresh session cookies...")
     with sync_playwright() as pw:
