@@ -17,6 +17,7 @@ import urllib3
 from pathlib import Path
 
 import requests
+from requests.cookies import RequestsCookieJar
 from linkedin_api import Linkedin
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -68,8 +69,7 @@ class LinkedInBot:
         print(f"[LinkedIn] Cookies: {len(browser_cookies)} keys loaded, li_at={'SET' if li_at else 'MISSING'}")
 
         if li_at:
-            # Cookie-based auth — authenticate=True with cookies calls _set_session_cookies()
-            # which sets cookies + csrf-token header without doing email/password login (no CHALLENGE)
+            # Cookie-based auth — no email/password login, no CHALLENGE triggered
             try:
                 self.api = Linkedin(
                     "", "",
@@ -78,9 +78,21 @@ class LinkedInBot:
                 )
                 self.session = self.api.client.session
                 self.session.verify = False
-                # Inject remaining cookies (bcookie, bscookie, etc.)
-                extra = {k: v for k, v in browser_cookies.items() if k not in ("li_at", "JSESSIONID")}
-                self.session.cookies.update(extra)
+
+                # linkedin-api._set_session_cookies does `session.cookies = dict` (plain dict)
+                # which breaks requests with 'dict has no attribute extract_cookies'.
+                # Fix: rebuild a proper RequestsCookieJar from the broken dict.
+                if isinstance(self.session.cookies, dict):
+                    jar = RequestsCookieJar()
+                    for k, v in self.session.cookies.items():
+                        jar.set(k, v, domain=".linkedin.com", path="/")
+                    self.session.cookies = jar
+
+                # Inject remaining browser cookies (bcookie, bscookie, etc.)
+                for k, v in browser_cookies.items():
+                    if k not in ("li_at", "JSESSIONID"):
+                        self.session.cookies.set(k, v, domain=".linkedin.com", path="/")
+
                 print(f"[LinkedIn] Authenticated via cookies (no login challenge)")
                 return
             except Exception as e:
