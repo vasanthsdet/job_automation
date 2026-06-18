@@ -28,27 +28,13 @@ _QA_TAGS = {"qa", "testing", "sdet", "quality-assurance", "test", "automation", 
 # Keywords to match in job title
 _QA_TITLE_KEYWORDS = ["qa", "quality", "test", "sdet", "automation engineer"]
 
-# Location values that confirm a non-US-only posting — skip these
-_BLOCKED_LOCATIONS = {
-    "india", "uk", "united kingdom", "canada", "australia", "europe",
-    "germany", "france", "netherlands", "spain", "brazil", "mexico",
-    "singapore", "philippines", "pakistan", "bangladesh",
-}
-
 
 def _is_us_eligible(job: dict) -> bool:
-    """Return True if the job is open to US applicants (remote/worldwide or US-only)."""
+    """Return True only if the job is explicitly US or has no location restriction."""
     loc = (job.get("location") or "").strip().lower()
     if not loc:
         return True
-    # Explicitly US or open worldwide
-    if any(tag in loc for tag in ("usa", "united states", "us only", "worldwide", "anywhere", "remote")):
-        return True
-    # Explicitly a non-US country
-    if any(country in loc for country in _BLOCKED_LOCATIONS):
-        return False
-    # Unknown location — allow (most RemoteOK remote jobs are worldwide)
-    return True
+    return any(tag in loc for tag in ("usa", "united states", "us only", "north america", "u.s."))
 
 
 def _is_qa_job(job: dict) -> bool:
