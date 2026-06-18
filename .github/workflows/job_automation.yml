@@ -14,12 +14,8 @@ jobs:
   collect:
     runs-on: ubuntu-latest
     environment: jobAlert
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
@@ -61,13 +57,13 @@ jobs:
       - name: Run collection portals (Adzuna + RemoteOK)
         run: python main.py --collect-only
 
-      - name: Commit updated applied_jobs.csv
-        run: |
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-          git add applied_jobs.csv last_reset_date.txt
-          git diff --cached --quiet || git commit -m "chore: update applied_jobs.csv [skip ci]"
-          git push
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collect-results
+          path: applied_jobs.csv
+          retention-days: 7
 
   # ── Job 2: LinkedIn on your local Windows machine ─────────
   # Runs on self-hosted runner — uses your real home IP (no LinkedIn block)
@@ -76,12 +72,8 @@ jobs:
     environment: jobAlert
     needs: collect
     if: always()
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Python dependencies
         shell: powershell
@@ -132,15 +124,12 @@ jobs:
 
       - name: Run LinkedIn Easy Apply
         shell: powershell
-        run: python main.py --linkedin-only --skip-tailor
+        run: python main.py --linkedin-only
 
-      - name: Commit updated applied_jobs.csv
-        shell: powershell
-        run: |
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-          git add applied_jobs.csv last_reset_date.txt
-          git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) { Write-Host "No changes to commit"; exit 0 }
-          git commit -m "chore: update applied_jobs.csv [skip ci]"
-          git push
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linkedin-results
+          path: applied_jobs.csv
+          retention-days: 7

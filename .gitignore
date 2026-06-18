@@ -2,8 +2,9 @@
 .env
 linkedin_cookies.json
 
-# Job tracker (committed back by GitHub Actions after each run)
-# applied_jobs.csv   ← keep tracked so history persists
+# Job tracker — generated fresh per run, downloaded as artifact from GitHub Actions
+applied_jobs.csv
+last_reset_date.txt
 
 # Logs
 *.log
