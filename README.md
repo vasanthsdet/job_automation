@@ -1,18 +1,32 @@
 # QA Job Application Automation
 
-Automatically searches LinkedIn, Adzuna, and RemoteOK for QA/SDET contract roles, AI-tailors your resume per job using Claude, and sends you a daily email report.
+Automatically searches **6 job portals** for QA/SDET contract roles, AI-tailors your resume per job using Claude, and sends a daily email report with clickable apply links.
+
+> **Note:** Stack Overflow Jobs shut down in March 2022 and is no longer available.
+> Dice.com and Wellfound (formerly AngelList) are included as replacements and cover the same tech-contractor audience.
 
 ---
 
 ## How It Works
 
-| Step | What runs | Where |
+| Stage | Portals | Where it runs |
 |---|---|---|
-| 1 | **Adzuna + RemoteOK** collect jobs via public APIs | GitHub cloud (`ubuntu-latest`) |
-| 2 | **LinkedIn Easy Apply** searches and applies | Your Windows PC (`self-hosted` runner) |
-| 3 | **Email report** sent with all found jobs | End of LinkedIn step |
+| **collect** | Adzuna · RemoteOK · ZipRecruiter · Wellfound · Dice | GitHub cloud (`ubuntu-latest`) |
+| **linkedin** | LinkedIn Easy Apply + AI resume tailoring | Your Windows PC (`self-hosted` runner) |
+| **email** | HTML report with all jobs + apply links | End of LinkedIn step |
 
 The split runner approach is intentional — LinkedIn blocks logins from GitHub cloud IPs (CHALLENGE error). Running on your own machine uses your home IP and avoids that.
+
+### Portals at a glance
+
+| Portal | Type | Coverage | Key |
+|---|---|---|---|
+| **Adzuna** | Aggregator (100+ boards) | Texas + Remote | Free key |
+| **RemoteOK** | Remote-only board | Remote US | None |
+| **ZipRecruiter** | Job board | Texas + Remote | Free key (optional) |
+| **Wellfound** | Startup / tech jobs | Texas + Remote | None |
+| **Dice** | Tech contractor board | Texas + Remote | None |
+| **LinkedIn** | Social + Easy Apply | Texas + Remote | Account |
 
 ---
 
@@ -92,14 +106,20 @@ TRACKER_FILE=applied_jobs.csv
 ### 5. Run locally to test
 
 ```bash
-# Full run (Adzuna + RemoteOK + LinkedIn)
+# Full run (all portals + LinkedIn)
 python main.py
 
-# Collect only (no LinkedIn apply)
+# Collect only — Adzuna, RemoteOK, ZipRecruiter, Wellfound, Dice (no LinkedIn)
 python main.py --collect-only
 
 # LinkedIn only
 python main.py --linkedin-only
+
+# Single portal
+python main.py --portal adzuna
+python main.py --portal wellfound
+python main.py --portal dice
+python main.py --portal remoteok
 
 # Dry run (search only, no apply, no email)
 python main.py --dry-run
@@ -196,9 +216,11 @@ job_automation/
 ├── main.py                  # Orchestrator — runs all bots in sequence
 ├── config.py                # Reads .env into Python variables
 ├── linkedin_bot.py          # LinkedIn Voyager API search + Easy Apply
-├── adzuna_bot.py            # Adzuna REST API job collection
-├── remoteok_bot.py          # RemoteOK public API job collection
+├── adzuna_bot.py            # Adzuna REST API (Texas + Remote)
+├── remoteok_bot.py          # RemoteOK public API (Remote US only)
 ├── ziprecruiter_bot.py      # ZipRecruiter API (optional key)
+├── wellfound_bot.py         # Wellfound / AngelList (startup tech jobs)
+├── dice_bot.py              # Dice.com REST API (tech contractor board)
 ├── resume_updater.py        # AI resume tailoring via Claude Haiku
 ├── email_reporter.py        # HTML email report builder + sender
 ├── job_tracker.py           # CSV tracker (applied_jobs.csv)

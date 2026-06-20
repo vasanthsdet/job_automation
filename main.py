@@ -2,14 +2,17 @@
 QA Job Application Workflow — backend only, no browser
 =======================================================
 Portals searched every run:
-  1  Dice        → public REST API (Dallas + Remote, Contract)
-  2  Indeed      → public RSS feed (Dallas + Remote, Contract)
-  3  RemoteOK    → public JSON API (Remote QA/SDET roles)
-  4  ZipRecruiter→ Jobs API (optional key, Dallas + Remote, Contract)
-  5  LinkedIn    → Voyager REST API → Easy Apply → AI-tailored resume
+  1  Adzuna      → public REST API (Texas + Remote, Contract, 250 calls/day free)
+  2  RemoteOK    → public JSON API (Remote QA/SDET roles, no key needed)
+  3  ZipRecruiter→ Jobs API (optional key, Texas + Remote, Contract)
+  4  Wellfound   → AngelList/Wellfound public job board (startup/tech QA roles)
+  5  Dice        → public REST API (Texas + Remote, Contract, top tech board)
+  6  LinkedIn    → Voyager REST API → Easy Apply → AI-tailored resume
+
+Note: Stack Overflow Jobs shut down in March 2022 and is no longer available.
 
 After all searches:
-  6  Email report → revathibathina11@gmail.com, dama.vasanth@gmail.com
+  7  Email report → revathibathina11@gmail.com, dama.vasanth@gmail.com
 
 Usage:
     python main.py                    # full workflow
@@ -63,6 +66,8 @@ from linkedin_bot import LinkedInBot
 from adzuna_bot import AdzunaBot
 from remoteok_bot import RemoteOKBot
 from ziprecruiter_bot import ZipRecruiterBot
+from wellfound_bot import WellfoundBot
+from dice_bot import DiceBot
 from email_reporter import send_report
 
 
@@ -86,6 +91,8 @@ COLLECTION_BOTS = {
     "adzuna":       AdzunaBot,
     "remoteok":     RemoteOKBot,
     "ziprecruiter": ZipRecruiterBot,
+    "wellfound":    WellfoundBot,
+    "dice":         DiceBot,
 }
 
 
