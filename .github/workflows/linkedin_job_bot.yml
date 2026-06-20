@@ -1,0 +1,85 @@
+name: LinkedIn Job Bot
+
+on:
+  schedule:
+    - cron: "0 13 * * 1-5"   # 8 AM CST (UTC-5) Mon–Fri, auto-run with defaults
+  workflow_dispatch:
+    inputs:
+      linkedin_email:
+        description: "LinkedIn email — leave blank to use LINKEDIN_EMAIL secret"
+        required: false
+        default: ""
+        type: string
+      linkedin_password:
+        description: "LinkedIn password — leave blank to use LINKEDIN_PASSWORD secret"
+        required: false
+        default: ""
+        type: string
+      email_recipients:
+        description: "Email recipients (comma-separated) — leave blank for default"
+        required: false
+        default: ""
+        type: string
+      technologies:
+        description: "Job search keywords (comma-separated) — leave blank for default"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  run-linkedin-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Mask passwords in logs
+        run: |
+          echo "::add-mask::${{ secrets.LINKEDIN_PASSWORD }}"
+          echo "::add-mask::${{ inputs.linkedin_password }}"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: job_automation
+        run: pip install -r requirements.txt
+
+      - name: Prepare base resume
+        working-directory: job_automation
+        run: |
+          mkdir -p resume
+          if [ -n "$RESUME_BASE64" ]; then
+            echo "$RESUME_BASE64" | base64 -d > resume/base_resume.docx
+            echo "[Resume] Decoded from RESUME_BASE64 secret"
+          else
+            echo "[Resume] RESUME_BASE64 secret not set — resume tailoring will be skipped"
+          fi
+        env:
+          RESUME_BASE64: ${{ secrets.RESUME_BASE64 }}
+
+      - name: Run LinkedIn Job Bot
+        working-directory: job_automation
+        env:
+          # Runtime input overrides secret; secret is the default when input is blank
+          LINKEDIN_EMAIL: ${{ inputs.linkedin_email || secrets.LINKEDIN_EMAIL }}
+          LINKEDIN_PASSWORD: ${{ inputs.linkedin_password || secrets.LINKEDIN_PASSWORD }}
+          # Runtime input overrides hardcoded default
+          EMAIL_RECIPIENTS: ${{ inputs.email_recipients || 'revathibathina11@gmail.com,dama.vasanth@gmail.com' }}
+          JOB_SEARCH_KEYWORDS: ${{ inputs.technologies || 'QA Engineer,SDET,QA Automation,Automation QA' }}
+          # Always from secrets
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+        run: python main.py --linkedin-only
+
+      - name: Upload job tracker CSV as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: applied-jobs-${{ github.run_number }}
+          path: job_automation/applied_jobs.csv
+          if-no-files-found: ignore

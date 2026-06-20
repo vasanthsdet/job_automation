@@ -31,7 +31,6 @@ from config import (
 )
 from job_tracker import JobTracker
 from resume_updater import create_tailored_resume
-from easy_apply_playwright import submit_easy_apply, get_fresh_cookies
 from utils import meets_rate
 
 VOYAGER = "https://www.linkedin.com/voyager/api"
@@ -64,12 +63,11 @@ class LinkedInBot:
         print("[LinkedIn] Authenticating via Voyager API...")
         ssl._create_default_https_context = ssl._create_unverified_context
 
-        # Get fresh cookies via Playwright headless login (once per run)
-        pw_cookies = get_fresh_cookies()
-        browser_cookies = {c["name"]: c["value"] for c in pw_cookies} if pw_cookies else {}
-        li_at     = browser_cookies.get("li_at", "")
+        # Try stored cookies from a previous local run
+        browser_cookies = self._load_browser_cookies()
+        li_at      = browser_cookies.get("li_at", "")
         jsessionid = browser_cookies.get("JSESSIONID", "")
-        print(f"[LinkedIn] Cookies: {len(browser_cookies)} keys, li_at={'SET' if li_at else 'MISSING'}")
+        print(f"[LinkedIn] Stored cookies: {len(browser_cookies)} keys, li_at={'SET' if li_at else 'MISSING'}")
 
         if li_at:
             try:
@@ -91,19 +89,16 @@ class LinkedInBot:
                     jar = RequestsCookieJar()
                     self.session.cookies = jar
 
-                # Inject remaining cookies (bcookie, bscookie, etc.)
                 for k, v in browser_cookies.items():
                     if k not in ("li_at", "JSESSIONID"):
                         self.session.cookies.set(k, v, domain=".linkedin.com", path="/")
 
-                print("[LinkedIn] Authenticated via fresh cookies")
+                print("[LinkedIn] Authenticated via stored cookies")
                 return
             except Exception as e:
                 print(f"[LinkedIn] Cookie auth failed: {e} — falling back to password login")
-        else:
-            print("[LinkedIn] No fresh li_at — using email/password login")
 
-        # Fallback: email/password login
+        # Email/password login
         _orig = requests.Session.request
         def _no_verify(self, method, url, **kw):
             kw.setdefault("verify", False)
@@ -129,35 +124,23 @@ class LinkedInBot:
     # ── Job search ────────────────────────────────────────────
 
     def _relogin_fresh(self):
-        """Force fresh Playwright login and re-authenticate (called on redirect errors)."""
-        import easy_apply_playwright as _ea
-        _ea._session_cookies = []  # clear in-process cache
-        print("[LinkedIn] Re-authenticating with fresh cookies...")
-        pw_cookies = get_fresh_cookies(force_login=True)
-        if not pw_cookies:
-            print("[LinkedIn] Fresh login failed — search will continue to fail")
-            return
-        browser_cookies = {c["name"]: c["value"] for c in pw_cookies}
-        li_at     = browser_cookies.get("li_at", "")
-        jsessionid = browser_cookies.get("JSESSIONID", "")
-        if not li_at:
-            return
+        """Re-authenticate via email/password (called on redirect errors)."""
+        print("[LinkedIn] Re-authenticating with email/password...")
+        _orig = requests.Session.request
+        def _no_verify(self, method, url, **kw):
+            kw.setdefault("verify", False)
+            return _orig(self, method, url, **kw)
+        requests.Session.request = _no_verify
         try:
-            self.api = Linkedin("", "", authenticate=True,
-                                cookies={"li_at": li_at, "JSESSIONID": jsessionid})
-            self.session = self.api.client.session
-            self.session.verify = False
-            if isinstance(self.session.cookies, dict):
-                jar = RequestsCookieJar()
-                for k, v in self.session.cookies.items():
-                    jar.set(k, v, domain=".linkedin.com", path="/")
-                self.session.cookies = jar
-            for k, v in browser_cookies.items():
-                if k not in ("li_at", "JSESSIONID"):
-                    self.session.cookies.set(k, v, domain=".linkedin.com", path="/")
-            print("[LinkedIn] Re-authenticated successfully")
+            self.api = Linkedin(LINKEDIN_EMAIL, LINKEDIN_PASSWORD)
         except Exception as e:
             print(f"[LinkedIn] Re-auth failed: {e}")
+            return
+        finally:
+            requests.Session.request = _orig
+        self.session = self.api.client.session
+        self.session.verify = False
+        print("[LinkedIn] Re-authenticated successfully")
 
     def _safe_search(self, label: str, **kwargs) -> list[dict]:
         try:
@@ -177,14 +160,6 @@ class LinkedInBot:
             print(f"  [LinkedIn] Search error ({label}): {e}")
             return []
 
-    # TX city names LinkedIn recognises
-    _TX_CITIES = [
-        "Dallas-Fort Worth Metroplex",
-        "Houston, Texas, United States",
-        "Austin, Texas, United States",
-        "San Antonio, Texas, United States",
-    ]
-
     # Title must contain at least one of these (case-insensitive) to be kept
     _QA_TITLE_WORDS = {"qa", "qe", "quality", "test", "sdet", "automation", "tester", "uat"}
 
@@ -197,46 +172,45 @@ class LinkedInBot:
         search_count = 0
 
         for kw in JOB_SEARCH_KEYWORDS:
-            # TX — search each major city
-            for city in self._TX_CITIES:
-                print(f"[LinkedIn] Search: '{kw}' in {city}")
-                if search_count > 0:
-                    time.sleep(random.uniform(4, 8))  # avoid rate limiting
-                results = self._safe_search(
-                    f"{kw}-{city}",
-                    keywords=kw,
-                    location_name=city,
-                    listed_at=LISTED_AT_SECONDS,
-                    limit=25,
-                )
-                search_count += 1
-                before = len(seen)
-                for j in results:
-                    jid = self._job_id(j)
-                    if jid and self._is_qa_title(self._job_title(j)):
-                        seen[jid] = j
-                print(f"  → {len(seen) - before} new QA/SDET results")
+            # On-site search using PRIMARY_LOCATION from config / runtime arg
+            print(f"[LinkedIn] Search: '{kw}' in {PRIMARY_LOCATION}")
+            if search_count > 0:
+                time.sleep(random.uniform(4, 8))
+            results = self._safe_search(
+                f"{kw}-{PRIMARY_LOCATION}",
+                keywords=kw,
+                location_name=PRIMARY_LOCATION,
+                listed_at=LISTED_AT_SECONDS,
+                limit=25,
+            )
+            search_count += 1
+            before = len(seen)
+            for j in results:
+                jid = self._job_id(j)
+                if jid and self._is_qa_title(self._job_title(j)):
+                    seen[jid] = j
+            print(f"  → {len(seen) - before} new QA/SDET results")
 
-            # Remote jobs
+            # Remote jobs — USA only
             if INCLUDE_REMOTE:
-                print(f"[LinkedIn] Search: '{kw}' Remote")
+                print(f"[LinkedIn] Search: '{kw}' Remote (USA only)")
                 if search_count > 0:
                     time.sleep(random.uniform(4, 8))
-                remote = self._safe_search(
-                    f"{kw}-remote",
+                remote_results = self._safe_search(
+                    f"{kw}-remote-usa",
                     keywords=kw,
                     location_name="United States",
                     remote=["2"],
                     listed_at=LISTED_AT_SECONDS,
-                    limit=30,
+                    limit=50,
                 )
                 search_count += 1
                 before = len(seen)
-                for j in remote:
+                for j in remote_results:
                     jid = self._job_id(j)
                     if jid and self._is_qa_title(self._job_title(j)):
                         seen[jid] = j
-                print(f"  → {len(seen) - before} new Remote QA/SDET results")
+                print(f"  → {len(seen) - before} new Remote USA QA/SDET results")
 
         all_jobs = list(seen.values())
         easy_apply = [j for j in all_jobs if self._is_easy_apply(j)]

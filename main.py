@@ -18,6 +18,12 @@ Usage:
     python main.py --dry-run          # search only, no apply, no email
     python main.py --portal dice      # run a single portal (dice/indeed/remoteok/ziprecruiter)
 
+Runtime credential overrides (never stored — set env vars before config loads):
+    --linkedin-email EMAIL            override LINKEDIN_EMAIL
+    --linkedin-password PASSWORD      override LINKEDIN_PASSWORD
+    --email-recipients a@b.com,c@d   override EMAIL_RECIPIENTS (default: revathibathina11@gmail.com,dama.vasanth@gmail.com)
+    --technologies "QA,SDET"         override JOB_SEARCH_KEYWORDS (default: QA)
+
 Scheduling:
     python scheduler.py               # every 3 hours (keep terminal open)
     setup_windows_scheduler.bat       # Windows background task (recommended)
@@ -25,6 +31,7 @@ Scheduling:
 
 import sys
 import os
+import argparse
 from datetime import datetime
 from pathlib import Path
 
@@ -33,6 +40,22 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 os.chdir(Path(__file__).parent)
+
+# ── Set runtime credentials as env vars before config reads them ─
+def _set_runtime_env():
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument("--linkedin-email")
+    p.add_argument("--linkedin-password")
+    p.add_argument("--email-recipients")
+    p.add_argument("--technologies")
+    args, _ = p.parse_known_args()
+    if args.linkedin_email:    os.environ["LINKEDIN_EMAIL"]      = args.linkedin_email
+    if args.linkedin_password: os.environ["LINKEDIN_PASSWORD"]   = args.linkedin_password
+    if args.email_recipients:  os.environ["EMAIL_RECIPIENTS"]    = args.email_recipients
+    if args.technologies:      os.environ["JOB_SEARCH_KEYWORDS"] = args.technologies
+
+_set_runtime_env()
+# ─────────────────────────────────────────────────────────────────
 
 from config import LINKEDIN_EMAIL, ANTHROPIC_API_KEY, BASE_RESUME_PATH, ZIPRECRUITER_API_KEY
 from job_tracker import JobTracker
@@ -46,11 +69,11 @@ from email_reporter import send_report
 def _validate():
     errors = []
     if not ANTHROPIC_API_KEY:
-        errors.append("ANTHROPIC_API_KEY missing in .env")
+        errors.append("ANTHROPIC_API_KEY not set — add to GitHub Secrets or pass as env var")
     if not LINKEDIN_EMAIL:
-        errors.append("LINKEDIN_EMAIL missing in .env")
+        errors.append("LINKEDIN_EMAIL not set — pass --linkedin-email or set env var LINKEDIN_EMAIL")
     if not Path(BASE_RESUME_PATH).exists():
-        errors.append(f"Resume not found at '{BASE_RESUME_PATH}' — copy your .docx to resume/base_resume.docx")
+        errors.append(f"Resume not found at '{BASE_RESUME_PATH}' — add RESUME_BASE64 to GitHub Secrets")
     if errors:
         print("\n[ERROR] Fix before running:\n")
         for e in errors:
