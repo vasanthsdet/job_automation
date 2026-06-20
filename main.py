@@ -116,6 +116,7 @@ def main():
     linkedin_only = "--linkedin-only" in args
     dry_run       = "--dry-run" in args
     skip_tailor   = "--skip-tailor" in args
+    no_email      = "--no-email" in args
     portal_filter = None
     if "--portal" in args:
         idx = args.index("--portal")
@@ -159,7 +160,7 @@ def main():
         print("\n[DRY RUN] Skipping LinkedIn applications")
 
     # ── Email report ──────────────────────────────────────────
-    if not dry_run:
+    if not dry_run and not no_email:
         print(f"\n── Email Report ──────────────────────────────────────────")
         send_report(run_start=run_start)
 

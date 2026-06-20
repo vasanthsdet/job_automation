@@ -1,13 +1,9 @@
 name: QA Job Automation
 
 on:
-  schedule:
-    # CDT (UTC-5): Mar–Nov  →  switch to CST (UTC-6) in November: change 12→13, 16→17, 20→21, 0→1
-    - cron: '0 12 * * *'   # 7:00 AM CDT  (UTC-5)
-    - cron: '0 16 * * *'   # 11:00 AM CDT
-    - cron: '0 20 * * *'   # 3:00 PM CDT
-    - cron: '0 0 * * *'    # 7:00 PM CDT
-  workflow_dispatch:         # manual trigger from GitHub UI
+  # DEPRECATED — superseded by linkedin_job_bot.yml which has all portals
+  # Kept for reference only; schedule removed to prevent duplicate runs/emails.
+  workflow_dispatch:         # manual trigger only (disabled schedule)
 
 jobs:
   # ── Job 1: Adzuna + RemoteOK on GitHub cloud ──────────────

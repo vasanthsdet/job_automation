@@ -84,7 +84,7 @@ jobs:
           fi
 
       - name: Run collection portals (Adzuna + RemoteOK + Remotive + Dice)
-        run: python main.py --collect-only
+        run: python main.py --collect-only --no-email
 
       - name: Upload results
         if: always()

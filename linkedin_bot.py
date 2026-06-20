@@ -38,11 +38,12 @@ VOYAGER = "https://www.linkedin.com/voyager/api"
 
 class LinkedInBot:
     def __init__(self, tracker: JobTracker, skip_tailor: bool = False):
-        self.tracker = tracker
+        self.tracker     = tracker
         self.skip_tailor = skip_tailor
         self.api: Linkedin | None = None
-        self.session = None
-        self.applied = 0
+        self.session     = None   # pinned once in login(), reused for ALL calls
+        self.applied     = 0
+        self._authed     = False  # guard: login() called at most once per instance
 
     # ── Auth ──────────────────────────────────────────────────
 
@@ -60,7 +61,10 @@ class LinkedInBot:
             return {}
 
     def login(self):
-        print("[LinkedIn] Authenticating via Voyager API...")
+        if self._authed:
+            print("[LinkedIn] Session already active — skipping re-login")
+            return
+        print("[LinkedIn] Authenticating via Voyager API (once per run)...")
         ssl._create_default_https_context = ssl._create_unverified_context
 
         # Try stored cookies from a previous local run
@@ -94,6 +98,7 @@ class LinkedInBot:
                         self.session.cookies.set(k, v, domain=".linkedin.com", path="/")
 
                 print("[LinkedIn] Authenticated via stored cookies")
+                self._authed = True
                 return
             except Exception as e:
                 print(f"[LinkedIn] Cookie auth failed: {e} — falling back to password login")
@@ -110,7 +115,8 @@ class LinkedInBot:
             requests.Session.request = _orig
         self.session = self.api.client.session
         self.session.verify = False
-        print("[LinkedIn] Authenticated via email/password")
+        self._authed = True
+        print("[LinkedIn] Authenticated via email/password — session pinned for this run")
 
     def _headers(self) -> dict:
         csrf = self.session.cookies.get("JSESSIONID", "").replace('"', "")
@@ -124,23 +130,26 @@ class LinkedInBot:
     # ── Job search ────────────────────────────────────────────
 
     def _relogin_fresh(self):
-        """Re-authenticate via email/password (called on redirect errors)."""
-        print("[LinkedIn] Re-authenticating with email/password...")
+        """Re-authenticate on auth expiry — refreshes cookies into the SAME session object."""
+        print("[LinkedIn] Auth token expired — refreshing (same session, no new login)...")
         _orig = requests.Session.request
-        def _no_verify(self, method, url, **kw):
+        def _no_verify(self_inner, method, url, **kw):
             kw.setdefault("verify", False)
-            return _orig(self, method, url, **kw)
+            return _orig(self_inner, method, url, **kw)
         requests.Session.request = _no_verify
         try:
-            self.api = Linkedin(LINKEDIN_EMAIL, LINKEDIN_PASSWORD)
+            fresh_api = Linkedin(LINKEDIN_EMAIL, LINKEDIN_PASSWORD)
         except Exception as e:
-            print(f"[LinkedIn] Re-auth failed: {e}")
+            print(f"[LinkedIn] Token refresh failed: {e}")
             return
         finally:
             requests.Session.request = _orig
-        self.session = self.api.client.session
-        self.session.verify = False
-        print("[LinkedIn] Re-authenticated successfully")
+        # Merge fresh cookies into the existing pinned session — don't replace it
+        for cookie in fresh_api.client.session.cookies:
+            self.session.cookies.set(cookie.name, cookie.value, domain=cookie.domain, path=cookie.path)
+        # Keep self.api pointing to fresh client so high-level calls work
+        self.api = fresh_api
+        print("[LinkedIn] Token refreshed — continuing with same session")
 
     def _safe_search(self, label: str, **kwargs) -> list[dict]:
         try:
@@ -441,12 +450,43 @@ class LinkedInBot:
 
             is_easy = detail["is_easy"]
             if is_easy:
-                # Easy Apply disabled — log for manual apply via the link in the email
-                print(f"  [Easy Apply] Logged for manual apply (auto-submit disabled)")
-                self.tracker.log_application(
-                    platform="LinkedIn", job_id=job_id, title=title,
-                    company=company, url=url, status="Easy Apply - Click to Apply",
-                )
+                # Tailor resume to this specific job's technologies
+                if self.skip_tailor:
+                    resume_path = BASE_RESUME_PATH
+                    print(f"  [Resume] Using base resume (--skip-tailor)")
+                else:
+                    print(f"  [Resume] Tailoring for '{title}'...")
+                    try:
+                        resume_path = create_tailored_resume(
+                            base_resume_path=BASE_RESUME_PATH,
+                            job_title=title,
+                            job_description=description,
+                        )
+                    except Exception as e:
+                        print(f"  [Resume] Tailoring failed: {e} — using base resume")
+                        resume_path = BASE_RESUME_PATH
+
+                # Submit Easy Apply using the pinned session (no re-login)
+                print(f"  [Easy Apply] Submitting with tailored resume...")
+                try:
+                    ok = self._submit_easy_apply(job_id, resume_path)
+                except Exception as e:
+                    print(f"  [Easy Apply] Error: {e}")
+                    ok = False
+
+                if ok:
+                    print(f"  [Easy Apply] Applied successfully")
+                    self.tracker.log_application(
+                        platform="LinkedIn", job_id=job_id, title=title,
+                        company=company, url=url, status="Easy Apply - Applied",
+                    )
+                    self.applied += 1
+                else:
+                    print(f"  [Easy Apply] Submit failed — logged for manual apply")
+                    self.tracker.log_application(
+                        platform="LinkedIn", job_id=job_id, title=title,
+                        company=company, url=url, status="Easy Apply - Click to Apply",
+                    )
             else:
                 print(f"  [External Apply] Link in email")
                 self.tracker.log_application(
