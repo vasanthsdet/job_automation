@@ -160,7 +160,10 @@ jobs:
 
       - name: Upload results
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
+        env:
+          NODE_TLS_REJECT_UNAUTHORIZED: "0"
         with:
           name: linkedin-results-${{ github.run_number }}
           path: applied_jobs.csv
