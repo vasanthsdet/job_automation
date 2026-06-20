@@ -11,7 +11,7 @@ Automatically searches **6 job portals** for QA/SDET contract roles, AI-tailors 
 
 | Stage | Portals | Where it runs |
 |---|---|---|
-| **collect** | Adzuna · RemoteOK · ZipRecruiter · Wellfound · Dice | GitHub cloud (`ubuntu-latest`) |
+| **collect** | Adzuna · RemoteOK · ZipRecruiter · Remotive · Dice | GitHub cloud (`ubuntu-latest`) |
 | **linkedin** | LinkedIn Easy Apply + AI resume tailoring | Your Windows PC (`self-hosted` runner) |
 | **email** | HTML report with all jobs + apply links | End of LinkedIn step |
 
@@ -24,9 +24,11 @@ The split runner approach is intentional — LinkedIn blocks logins from GitHub 
 | **Adzuna** | Aggregator (100+ boards) | Texas + Remote | Free key |
 | **RemoteOK** | Remote-only board | Remote US | None |
 | **ZipRecruiter** | Job board | Texas + Remote | Free key (optional) |
-| **Wellfound** | Startup / tech jobs | Texas + Remote | None |
+| **Remotive** | Remote tech job board | Remote US-eligible | None |
 | **Dice** | Tech contractor board | Texas + Remote | None |
 | **LinkedIn** | Social + Easy Apply | Texas + Remote | Account |
+
+> **Wellfound (AngelList)** has no public API — it requires OAuth authentication. Replaced by **Remotive** which covers the same remote startup/tech QA audience via a genuine public API.
 
 ---
 
@@ -117,7 +119,7 @@ python main.py --linkedin-only
 
 # Single portal
 python main.py --portal adzuna
-python main.py --portal wellfound
+python main.py --portal remotive
 python main.py --portal dice
 python main.py --portal remoteok
 
@@ -219,7 +221,7 @@ job_automation/
 ├── adzuna_bot.py            # Adzuna REST API (Texas + Remote)
 ├── remoteok_bot.py          # RemoteOK public API (Remote US only)
 ├── ziprecruiter_bot.py      # ZipRecruiter API (optional key)
-├── wellfound_bot.py         # Wellfound / AngelList (startup tech jobs)
+├── remotive_bot.py          # Remotive public API (remote QA/tech, no key needed)
 ├── dice_bot.py              # Dice.com REST API (tech contractor board)
 ├── resume_updater.py        # AI resume tailoring via Claude Haiku
 ├── email_reporter.py        # HTML email report builder + sender

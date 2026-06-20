@@ -5,11 +5,12 @@ Portals searched every run:
   1  Adzuna      → public REST API (Texas + Remote, Contract, 250 calls/day free)
   2  RemoteOK    → public JSON API (Remote QA/SDET roles, no key needed)
   3  ZipRecruiter→ Jobs API (optional key, Texas + Remote, Contract)
-  4  Wellfound   → AngelList/Wellfound public job board (startup/tech QA roles)
+  4  Remotive    → public REST API (remote tech jobs, QA/SDET focus, no key needed)
   5  Dice        → public REST API (Texas + Remote, Contract, top tech board)
   6  LinkedIn    → Voyager REST API → Easy Apply → AI-tailored resume
 
 Note: Stack Overflow Jobs shut down in March 2022 and is no longer available.
+Note: Wellfound (AngelList) has no public API (requires OAuth) — replaced by Remotive.
 
 After all searches:
   7  Email report → revathibathina11@gmail.com, dama.vasanth@gmail.com
@@ -66,7 +67,7 @@ from linkedin_bot import LinkedInBot
 from adzuna_bot import AdzunaBot
 from remoteok_bot import RemoteOKBot
 from ziprecruiter_bot import ZipRecruiterBot
-from wellfound_bot import WellfoundBot
+from remotive_bot import RemotiveBot
 from dice_bot import DiceBot
 from email_reporter import send_report
 
@@ -91,7 +92,7 @@ COLLECTION_BOTS = {
     "adzuna":       AdzunaBot,
     "remoteok":     RemoteOKBot,
     "ziprecruiter": ZipRecruiterBot,
-    "wellfound":    WellfoundBot,
+    "remotive":     RemotiveBot,
     "dice":         DiceBot,
 }
 

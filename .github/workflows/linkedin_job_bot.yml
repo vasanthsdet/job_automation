@@ -80,7 +80,7 @@ jobs:
             echo '${{ secrets.RESUME_BASE64 }}' | base64 -d > resume/base_resume.docx
           fi
 
-      - name: Run collection portals (Adzuna + RemoteOK)
+      - name: Run collection portals (Adzuna + RemoteOK + Remotive + Dice)
         run: python main.py --collect-only
 
       - name: Upload results
