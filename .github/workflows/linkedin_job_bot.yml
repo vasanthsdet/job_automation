@@ -2,7 +2,10 @@ name: LinkedIn Job Bot
 
 on:
   schedule:
-    - cron: "0 13 * * 1-5"   # 8 AM CST (UTC-5) Mon–Fri, auto-run with defaults
+    - cron: '0 12 * * *'   # 7:00 AM CDT
+    - cron: '0 16 * * *'   # 11:00 AM CDT
+    - cron: '0 20 * * *'   # 3:00 PM CDT
+    - cron: '0 0 * * *'    # 7:00 PM CDT
   workflow_dispatch:
     inputs:
       linkedin_email:
@@ -29,6 +32,7 @@ on:
 jobs:
   run-linkedin-bot:
     runs-on: ubuntu-latest
+    environment: jobAlert
 
     steps:
       - name: Checkout repository
@@ -43,36 +47,48 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Prepare base resume
+      - name: Create .env
+        run: |
+          cat > .env << 'ENVEOF'
+          LINKEDIN_EMAIL=${{ inputs.linkedin_email || secrets.LINKEDIN_EMAIL }}
+          LINKEDIN_PASSWORD=${{ inputs.linkedin_password || secrets.LINKEDIN_PASSWORD }}
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          ADZUNA_APP_ID=${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY=${{ secrets.ADZUNA_APP_KEY }}
+          EMAIL_SENDER=${{ secrets.EMAIL_SENDER }}
+          EMAIL_APP_PASSWORD=${{ secrets.EMAIL_APP_PASSWORD }}
+          EMAIL_RECIPIENTS=${{ inputs.email_recipients || 'revathibathina11@gmail.com,dama.vasanth@gmail.com' }}
+          JOB_SEARCH_KEYWORDS=${{ inputs.technologies || 'QA Engineer,SDET,QA Automation,Automation QA' }}
+          PRIMARY_LOCATION=Texas, United States
+          INCLUDE_REMOTE=true
+          JOB_TYPE=C
+          MAX_JOBS_TO_APPLY=10
+          LISTED_AT_DAYS=1
+          MIN_HOURLY_RATE=50
+          EXPECTED_HOURLY_RATE=50
+          BASE_RESUME_PATH=resume/base_resume.docx
+          TRACKER_FILE=applied_jobs.csv
+          YEARS_OF_EXPERIENCE=11
+          WORK_AUTHORIZATION=Yes
+          WILLING_TO_RELOCATE=YES
+          ENVEOF
+
+      - name: Restore resume
         run: |
           mkdir -p resume
-          if [ -n "$RESUME_BASE64" ]; then
-            echo "$RESUME_BASE64" | base64 -d > resume/base_resume.docx
-            echo "[Resume] Decoded from RESUME_BASE64 secret"
+          if [ -n "${{ secrets.RESUME_BASE64 }}" ]; then
+            echo '${{ secrets.RESUME_BASE64 }}' | base64 -d > resume/base_resume.docx
+            echo "[Resume] Restored from RESUME_BASE64 secret"
           else
-            echo "[Resume] RESUME_BASE64 secret not set — resume tailoring will be skipped"
+            echo "[Resume] RESUME_BASE64 not set — resume tailoring will be skipped"
           fi
-        env:
-          RESUME_BASE64: ${{ secrets.RESUME_BASE64 }}
 
-      - name: Run LinkedIn Job Bot
-        env:
-          # Runtime input overrides secret; secret is the default when input is blank
-          LINKEDIN_EMAIL: ${{ inputs.linkedin_email || secrets.LINKEDIN_EMAIL }}
-          LINKEDIN_PASSWORD: ${{ inputs.linkedin_password || secrets.LINKEDIN_PASSWORD }}
-          # Runtime input overrides hardcoded default
-          EMAIL_RECIPIENTS: ${{ inputs.email_recipients || 'revathibathina11@gmail.com,dama.vasanth@gmail.com' }}
-          JOB_SEARCH_KEYWORDS: ${{ inputs.technologies || 'QA Engineer,SDET,QA Automation,Automation QA' }}
-          # Always from secrets
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
-          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
-          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
-          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+      - name: Run Job Bot
         run: python main.py
 
       - name: Upload job tracker CSV as artifact
@@ -82,3 +98,4 @@ jobs:
           name: applied-jobs-${{ github.run_number }}
           path: applied_jobs.csv
           if-no-files-found: ignore
+          retention-days: 7
