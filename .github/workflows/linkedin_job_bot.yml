@@ -29,22 +29,16 @@ on:
         default: ""
         type: string
 
+# ── Job 1: Adzuna + RemoteOK on GitHub cloud ──────────────────────
 jobs:
-  run-linkedin-bot:
+  collect:
     runs-on: ubuntu-latest
     environment: jobAlert
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Mask passwords in logs
-        run: |
-          echo "::add-mask::${{ secrets.LINKEDIN_PASSWORD }}"
-          echo "::add-mask::${{ inputs.linkedin_password }}"
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
@@ -84,19 +78,91 @@ jobs:
           mkdir -p resume
           if [ -n "${{ secrets.RESUME_BASE64 }}" ]; then
             echo '${{ secrets.RESUME_BASE64 }}' | base64 -d > resume/base_resume.docx
-            echo "[Resume] Restored from RESUME_BASE64 secret"
-          else
-            echo "[Resume] RESUME_BASE64 not set — resume tailoring will be skipped"
           fi
 
-      - name: Run Job Bot
-        run: python main.py
+      - name: Run collection portals (Adzuna + RemoteOK)
+        run: python main.py --collect-only
 
-      - name: Upload job tracker CSV as artifact
+      - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: applied-jobs-${{ github.run_number }}
+          name: collect-results-${{ github.run_number }}
+          path: applied_jobs.csv
+          if-no-files-found: ignore
+          retention-days: 7
+
+# ── Job 2: LinkedIn on your local Windows machine ─────────────────
+  linkedin:
+    runs-on: self-hosted
+    environment: jobAlert
+    needs: collect
+    if: always()
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        shell: powershell
+        run: pip install -r requirements.txt
+
+      - name: Create .env
+        shell: powershell
+        env:
+          LINKEDIN_EMAIL:     ${{ inputs.linkedin_email || secrets.LINKEDIN_EMAIL }}
+          LINKEDIN_PASSWORD:  ${{ inputs.linkedin_password || secrets.LINKEDIN_PASSWORD }}
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          ADZUNA_APP_ID:      ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY:     ${{ secrets.ADZUNA_APP_KEY }}
+          EMAIL_SENDER:       ${{ secrets.EMAIL_SENDER }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          EMAIL_RECIPIENTS:   ${{ inputs.email_recipients || 'revathibathina11@gmail.com,dama.vasanth@gmail.com' }}
+          JOB_SEARCH_KEYWORDS: ${{ inputs.technologies || 'QA Engineer,SDET,QA Automation,Automation QA' }}
+          ADZUNA_KEYWORDS:    ${{ inputs.technologies }}
+        run: |
+          @"
+          LINKEDIN_EMAIL=$env:LINKEDIN_EMAIL
+          LINKEDIN_PASSWORD=$env:LINKEDIN_PASSWORD
+          ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY
+          ADZUNA_APP_ID=$env:ADZUNA_APP_ID
+          ADZUNA_APP_KEY=$env:ADZUNA_APP_KEY
+          EMAIL_SENDER=$env:EMAIL_SENDER
+          EMAIL_APP_PASSWORD=$env:EMAIL_APP_PASSWORD
+          EMAIL_RECIPIENTS=$env:EMAIL_RECIPIENTS
+          JOB_SEARCH_KEYWORDS=$env:JOB_SEARCH_KEYWORDS
+          ADZUNA_KEYWORDS=$env:ADZUNA_KEYWORDS
+          PRIMARY_LOCATION=Texas, United States
+          INCLUDE_REMOTE=true
+          JOB_TYPE=C
+          MAX_JOBS_TO_APPLY=10
+          LISTED_AT_DAYS=1
+          MIN_HOURLY_RATE=50
+          EXPECTED_HOURLY_RATE=50
+          BASE_RESUME_PATH=resume/base_resume.docx
+          TRACKER_FILE=applied_jobs.csv
+          YEARS_OF_EXPERIENCE=11
+          WORK_AUTHORIZATION=Yes
+          WILLING_TO_RELOCATE=YES
+          "@ | Out-File -FilePath .env -Encoding utf8
+
+      - name: Restore resume
+        shell: powershell
+        env:
+          RESUME_BASE64: ${{ secrets.RESUME_BASE64 }}
+        run: |
+          $bytes = [Convert]::FromBase64String($env:RESUME_BASE64)
+          New-Item -ItemType Directory -Force resume | Out-Null
+          [IO.File]::WriteAllBytes("$PWD\resume\base_resume.docx", $bytes)
+
+      - name: Run LinkedIn Easy Apply
+        shell: powershell
+        run: python main.py --linkedin-only
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linkedin-results-${{ github.run_number }}
           path: applied_jobs.csv
           if-no-files-found: ignore
           retention-days: 7
