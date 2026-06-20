@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 
 echo ============================================================
 echo  QA Job Automation — Windows Task Scheduler Setup
-echo  Runs every 6 hours: 7AM / 1PM / 7PM / 1AM (no terminal needed)
+echo  Runs every 2 hours: 7AM / 9AM / 11AM / 1PM / 3PM / 5PM / 7PM
 echo ============================================================
 
 :: Find Python executable
@@ -37,14 +37,14 @@ echo Created wrapper: %WRAPPER_BAT%
 :: Remove old task if exists
 schtasks /delete /tn "%TASK_NAME%" /f >nul 2>&1
 
-:: Create task: daily at 7:00 AM, repeat every 6 hours (4 runs/day)
+:: Create task: daily at 7:00 AM, repeat every 2 hours (7 runs/day, 12 hours total window)
 schtasks /create ^
   /tn "%TASK_NAME%" ^
   /tr "\"%WRAPPER_BAT%\"" ^
   /sc DAILY ^
   /st 07:00 ^
-  /ri 360 ^
-  /du 1440 ^
+  /ri 120 ^
+  /du 0720 ^
   /rl HIGHEST ^
   /f
 
@@ -54,7 +54,8 @@ if %errorlevel% equ 0 (
     echo  Task registered successfully!
     echo.
     echo  Name     : %TASK_NAME%
-    echo  Schedule : 7:00 AM, 1:00 PM, 7:00 PM, 1:00 AM (daily)
+    echo  Schedule : 7:00 AM, 9:00 AM, 11:00 AM, 1:00 PM,
+    echo             3:00 PM, 5:00 PM, 7:00 PM  (daily)
     echo  Logs     : %LOG_FILE%
     echo.
     echo  To run immediately : schtasks /run /tn "%TASK_NAME%"

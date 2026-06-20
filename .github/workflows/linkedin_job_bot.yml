@@ -3,8 +3,11 @@ name: LinkedIn Job Bot
 on:
   schedule:
     - cron: '0 12 * * *'   # 7:00 AM CDT
+    - cron: '0 14 * * *'   # 9:00 AM CDT
     - cron: '0 16 * * *'   # 11:00 AM CDT
+    - cron: '0 18 * * *'   # 1:00 PM CDT
     - cron: '0 20 * * *'   # 3:00 PM CDT
+    - cron: '0 22 * * *'   # 5:00 PM CDT
     - cron: '0 0 * * *'    # 7:00 PM CDT
   workflow_dispatch:
     inputs:

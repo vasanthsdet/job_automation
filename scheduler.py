@@ -1,6 +1,6 @@
 """
-Runs the full job workflow at fixed times: 7 AM, 1 PM, 7 PM, 1 AM (local/CST).
-Exactly 6-hour intervals, guaranteed run between 7-8 AM CST every day.
+Runs the full job workflow every 2 hours during business hours (local time).
+Schedule: 7 AM, 9 AM, 11 AM, 1 PM, 3 PM, 5 PM, 7 PM — 7 runs/day.
 
 Usage:
     python scheduler.py          # foreground (keep terminal open)
@@ -23,6 +23,8 @@ from job_tracker import JobTracker
 from adzuna_bot import AdzunaBot
 from remoteok_bot import RemoteOKBot
 from ziprecruiter_bot import ZipRecruiterBot
+from remotive_bot import RemotiveBot
+from dice_bot import DiceBot
 from linkedin_bot import LinkedInBot
 from email_reporter import send_report
 
@@ -55,38 +57,40 @@ COLLECTION_STEPS = [
     ("Adzuna",       AdzunaBot),
     ("RemoteOK",     RemoteOKBot),
     ("ZipRecruiter", ZipRecruiterBot),
+    ("Remotive",     RemotiveBot),
+    ("Dice",         DiceBot),
 ]
 
 
 def run_cycle():
     run_start = datetime.now()
-    _log("=" * 56)
+    _log("=" * 60)
     _log(f"  Cycle — {run_start.strftime('%Y-%m-%d %H:%M')}")
-    _log("=" * 56)
+    _log("=" * 60)
 
     if not _validate():
         return
 
     tracker = JobTracker()
 
-    # ── Collection portals ────────────────────────────────────
+    # ── Collection portals ─────────────────────────────────────
     for label, BotClass in COLLECTION_STEPS:
-        _log(f"[{label}] Starting search...")
+        _log(f"[{label}] Starting...")
         try:
             BotClass(tracker).run()
             _log(f"[{label}] Done")
         except Exception as e:
             _log(f"[{label}] ERROR: {e}")
 
-    # ── LinkedIn Easy Apply ───────────────────────────────────
-    _log("[LinkedIn] Starting Easy Apply workflow...")
+    # ── LinkedIn Easy Apply ────────────────────────────────────
+    _log("[LinkedIn] Starting Easy Apply...")
     try:
         LinkedInBot(tracker).run()
         _log("[LinkedIn] Done")
     except Exception as e:
         _log(f"[LinkedIn] ERROR: {e}")
 
-    # ── Email report ──────────────────────────────────────────
+    # ── Email report ───────────────────────────────────────────
     _log("[Email] Sending consolidated report...")
     try:
         send_report(run_start=run_start)
@@ -95,27 +99,24 @@ def run_cycle():
         _log(f"[Email] ERROR: {e}")
 
     elapsed = (datetime.now() - run_start).seconds // 60
-    _log(f"  Cycle complete in {elapsed} min. Next run in 6 hours.")
+    _log(f"  Cycle complete in {elapsed} min. Next run in ~2 hours.")
     _log("")
 
 
 def main():
-    print("=" * 56)
+    print("=" * 60)
     print("  QA Job Automation Scheduler")
-    print("  Portals: Adzuna · RemoteOK · ZipRecruiter · LinkedIn")
-    print("  Runs at 7:00 AM / 1:00 PM / 7:00 PM / 1:00 AM (local time)")
+    print("  Portals: Adzuna · RemoteOK · ZipRecruiter · Remotive · Dice · LinkedIn")
+    print("  Runs at 7AM / 9AM / 11AM / 1PM / 3PM / 5PM / 7PM (local time)")
     print("  Ctrl+C to stop")
-    print("=" * 56)
+    print("=" * 60)
 
-    # 4 runs between 7 AM and 7 PM CST — every 4 hours
-    schedule.every().day.at("07:00").do(run_cycle)
-    schedule.every().day.at("11:00").do(run_cycle)
-    schedule.every().day.at("15:00").do(run_cycle)
-    schedule.every().day.at("19:00").do(run_cycle)
+    for t in ("07:00", "09:00", "11:00", "13:00", "15:00", "17:00", "19:00"):
+        schedule.every().day.at(t).do(run_cycle)
 
     next_runs = [str(j.next_run) for j in schedule.jobs]
-    _log(f"Scheduled run times (today/tomorrow): {', '.join(next_runs)}")
-    _log("Waiting for next scheduled run... (run main.py manually for an immediate run)")
+    _log(f"Next scheduled runs: {', '.join(next_runs)}")
+    _log("Waiting... (run main.py for an immediate one-off run)")
 
     while True:
         schedule.run_pending()
