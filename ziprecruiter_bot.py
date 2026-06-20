@@ -56,6 +56,7 @@ class ZipRecruiterBot:
             params["radius_miles"]  = 30
         if remote:
             params["remote"]        = True
+            params["location"]      = "United States"
 
         jobs: list[dict] = []
         try:

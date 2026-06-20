@@ -24,10 +24,9 @@ _HEADERS = {
 
 _QA_WORDS = {"qa", "qe", "quality", "test", "sdet", "automation", "tester", "uat"}
 
-_BLOCKED_LOCATIONS = {
-    "india", "pakistan", "europe", "uk", "canada", "australia",
-    "latam", "africa", "asia", "worldwide",
-}
+_NON_US = {"europe", "uk", "united kingdom", "india", "pakistan", "canada",
+           "australia", "latam", "africa", "asia", "apac", "germany", "france",
+           "netherlands", "poland", "ukraine", "brazil", "mexico", "singapore"}
 
 
 def _is_qa_title(title: str) -> bool:
@@ -36,12 +35,12 @@ def _is_qa_title(title: str) -> bool:
 
 
 def _is_us_eligible(job: dict) -> bool:
-    loc = (job.get("candidate_required_location") or "").lower()
-    if not loc or loc in ("anywhere", "worldwide", "remote"):
+    loc = (job.get("candidate_required_location") or "").lower().strip()
+    if not loc:
         return True
-    if "us" in loc or "usa" in loc or "united states" in loc or "north america" in loc:
-        return True
-    return not any(blocked in loc for blocked in _BLOCKED_LOCATIONS)
+    if any(b in loc for b in _NON_US):
+        return False
+    return True  # "anywhere", "worldwide", "US", "North America", etc. → allow
 
 
 class RemotiveBot:

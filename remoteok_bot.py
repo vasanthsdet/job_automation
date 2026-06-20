@@ -29,12 +29,20 @@ _QA_TAGS = {"qa", "testing", "sdet", "quality-assurance", "test", "automation", 
 _QA_TITLE_KEYWORDS = ["qa", "quality", "test", "sdet", "automation engineer"]
 
 
+_US_LOCATIONS = {"usa", "united states", "us only", "north america", "u.s.",
+                  "anywhere", "worldwide", "global", "remote", ""}
+_NON_US = {"europe", "uk", "united kingdom", "india", "pakistan", "canada",
+           "australia", "latam", "africa", "asia", "apac", "germany", "france",
+           "netherlands", "poland", "ukraine", "brazil", "mexico", "singapore"}
+
+
 def _is_us_eligible(job: dict) -> bool:
-    """Return True only if the job is explicitly US or has no location restriction."""
     loc = (job.get("location") or "").strip().lower()
     if not loc:
         return True
-    return any(tag in loc for tag in ("usa", "united states", "us only", "north america", "u.s."))
+    if any(b in loc for b in _NON_US):
+        return False
+    return True  # unknown / worldwide / explicitly US → allow
 
 
 def _is_qa_job(job: dict) -> bool:
