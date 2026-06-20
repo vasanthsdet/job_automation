@@ -64,6 +64,7 @@ jobs:
           EMAIL_APP_PASSWORD=${{ secrets.EMAIL_APP_PASSWORD }}
           EMAIL_RECIPIENTS=${{ inputs.email_recipients || 'revathibathina11@gmail.com,dama.vasanth@gmail.com' }}
           JOB_SEARCH_KEYWORDS=${{ inputs.technologies || 'QA Engineer,SDET,QA Automation,Automation QA' }}
+          ADZUNA_KEYWORDS=${{ inputs.technologies }}
           PRIMARY_LOCATION=Texas, United States
           INCLUDE_REMOTE=true
           JOB_TYPE=C

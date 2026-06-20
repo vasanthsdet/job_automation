@@ -104,11 +104,19 @@ class AdzunaBot:
 
         return jobs
 
+    _DEFAULT_KEYWORDS = ["QA engineer", "quality assurance", "test automation", "software tester"]
+
     def search_jobs(self) -> list[dict]:
         seen: dict[str, dict] = {}
 
-        # Adzuna aggregates general job boards — use broad QA terms (not niche acronyms like SDET)
-        adzuna_keywords = ["QA engineer", "quality assurance", "test automation", "software tester"]
+        # Use ADZUNA_KEYWORDS if passed at runtime, otherwise fall back to broad QA defaults
+        import os
+        _raw = os.getenv("ADZUNA_KEYWORDS", "").strip()
+        adzuna_keywords = (
+            [k.strip() for k in _raw.split(",") if k.strip()]
+            if _raw
+            else self._DEFAULT_KEYWORDS
+        )
 
         for i, kw in enumerate(adzuna_keywords):
             if i > 0:
