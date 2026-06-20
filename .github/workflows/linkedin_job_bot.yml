@@ -45,11 +45,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        working-directory: job_automation
         run: pip install -r requirements.txt
 
       - name: Prepare base resume
-        working-directory: job_automation
         run: |
           mkdir -p resume
           if [ -n "$RESUME_BASE64" ]; then
@@ -62,7 +60,6 @@ jobs:
           RESUME_BASE64: ${{ secrets.RESUME_BASE64 }}
 
       - name: Run LinkedIn Job Bot
-        working-directory: job_automation
         env:
           # Runtime input overrides secret; secret is the default when input is blank
           LINKEDIN_EMAIL: ${{ inputs.linkedin_email || secrets.LINKEDIN_EMAIL }}
@@ -81,5 +78,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: applied-jobs-${{ github.run_number }}
-          path: job_automation/applied_jobs.csv
+          path: applied_jobs.csv
           if-no-files-found: ignore
