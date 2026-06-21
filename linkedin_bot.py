@@ -247,10 +247,13 @@ class LinkedInBot:
             except (ValueError, TypeError):
                 count = 0
 
-            # Easy Apply — checked from full detail (not search result which omits it)
+            # Easy Apply — checked from full detail (search result omits it)
             apply_method = detail.get("applyMethod", {})
             if isinstance(apply_method, dict):
-                is_easy = any("ComplexOnsiteApply" in k for k in apply_method)
+                keys = list(apply_method.keys())
+                is_easy = any("ComplexOnsiteApply" in k or "easyApply" in k.lower() for k in keys)
+                if keys:
+                    print(f"  [applyMethod] keys={keys[:2]}")
             else:
                 is_easy = False
 
@@ -397,6 +400,10 @@ class LinkedInBot:
 
     # ── Main run ──────────────────────────────────────────────
 
+    # Stop examining new jobs after this many regardless of apply count.
+    # Prevents the loop running for 30+ minutes when no Easy Apply jobs appear.
+    MAX_EXAMINE = MAX_JOBS_TO_APPLY * 4
+
     def run(self):
         self.login()
         jobs = self.search_jobs()
@@ -405,28 +412,37 @@ class LinkedInBot:
             j for j in jobs
             if self._job_id(j) and not self.tracker.already_applied(self._job_id(j))
         ]
-        print(f"[LinkedIn] {len(to_process)} new jobs to evaluate")
+        print(f"[LinkedIn] {len(to_process)} new jobs to evaluate (cap: examine {self.MAX_EXAMINE}, apply {MAX_JOBS_TO_APPLY})")
 
+        examined = 0
         for job in to_process:
             if self.applied >= MAX_JOBS_TO_APPLY:
-                print(f"[LinkedIn] Limit of {MAX_JOBS_TO_APPLY} reached")
+                print(f"[LinkedIn] Apply limit ({MAX_JOBS_TO_APPLY}) reached — stopping")
                 break
+            if examined >= self.MAX_EXAMINE:
+                print(f"[LinkedIn] Examine cap ({self.MAX_EXAMINE}) reached — stopping")
+                break
+            examined += 1
 
             job_id  = self._job_id(job)
             title   = self._job_title(job)
             company = self._company_name(job)
             url     = self._job_url(job_id)
 
-            print(f"\n[LinkedIn] → {title} @ {company}")
+            print(f"\n[LinkedIn] [{examined}/{self.MAX_EXAMINE}] → {title} @ {company}")
 
-            # Fetch description + applicant count + better company name in one call
+            # Fetch description + applicant count + Easy Apply flag in one call
             detail      = self._get_job_detail(job_id)
             description = detail["description"]
             applicants  = detail["applicants"]
-            # Use detail company name if search result had "Unknown"
+            is_easy     = detail["is_easy"]
+
             if company == "Unknown" and detail.get("company"):
                 company = detail["company"]
                 print(f"  [company] Resolved: {company}")
+
+            # Debug: show what applyMethod keys LinkedIn returned
+            print(f"  [apply-type] easy={is_easy}  applicants={applicants}")
 
             # ── 100+ applicants gate ──────────────────────────
             if applicants >= 100:
@@ -436,6 +452,7 @@ class LinkedInBot:
                     company=company, url=url,
                     status=f"Skipped - {applicants}+ Applicants",
                 )
+                time.sleep(random.uniform(1, 2))
                 continue
 
             # ── Hourly rate gate ──────────────────────────────
@@ -446,11 +463,11 @@ class LinkedInBot:
                     company=company, url=url,
                     status=f"Skipped - Rate Below ${MIN_HOURLY_RATE}/hr",
                 )
+                time.sleep(random.uniform(1, 2))
                 continue
 
-            is_easy = detail["is_easy"]
             if is_easy:
-                # Tailor resume to this specific job's technologies
+                # Tailor resume to this job's technologies then submit
                 if self.skip_tailor:
                     resume_path = BASE_RESUME_PATH
                     print(f"  [Resume] Using base resume (--skip-tailor)")
@@ -466,7 +483,6 @@ class LinkedInBot:
                         print(f"  [Resume] Tailoring failed: {e} — using base resume")
                         resume_path = BASE_RESUME_PATH
 
-                # Submit Easy Apply using the pinned session (no re-login)
                 print(f"  [Easy Apply] Submitting with tailored resume...")
                 try:
                     ok = self._submit_easy_apply(job_id, resume_path)
@@ -494,6 +510,6 @@ class LinkedInBot:
                     company=company, url=url, status="Collected - External Apply",
                 )
 
-            time.sleep(random.uniform(3, 6))
+            time.sleep(random.uniform(1, 2))
 
-        print(f"\n[LinkedIn] Done. Applied: {self.applied}")
+        print(f"\n[LinkedIn] Done. Examined: {examined}  Applied: {self.applied}")
