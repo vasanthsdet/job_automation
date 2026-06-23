@@ -6,7 +6,7 @@ to all configured recipients.
 import csv
 import smtplib
 from collections import defaultdict, Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -48,6 +48,39 @@ _th = "padding:10px 12px;text-align:left;white-space:nowrap;font-size:13px"
 _td = "padding:8px 12px;border-bottom:1px solid #eee;font-size:13px"
 
 
+def _fmt_posted(val: str) -> str:
+    """Convert a raw timestamp/date string to a human-readable posting age."""
+    if not val:
+        return "—"
+    try:
+        # Unix ms (LinkedIn listedAt: 13-digit number)
+        if val.isdigit() and len(val) >= 13:
+            dt = datetime.fromtimestamp(int(val) / 1000, tz=timezone.utc)
+        # Unix seconds (RemoteOK epoch: 10-digit number)
+        elif val.isdigit() and len(val) == 10:
+            dt = datetime.fromtimestamp(int(val), tz=timezone.utc)
+        # Adzuna format: "2024/06/22 10:30:15"
+        elif "/" in val and " " in val:
+            dt = datetime.strptime(val[:19], "%Y/%m/%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        else:
+            dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+        now   = datetime.now(timezone.utc)
+        delta = now - dt
+        mins  = int(delta.total_seconds() / 60)
+        hours = mins // 60
+        if mins < 60:
+            return f"{mins}m ago"
+        if hours < 24:
+            return f"{hours}h ago"
+        if delta.days == 1:
+            return "1d ago"
+        if delta.days < 8:
+            return f"{delta.days}d ago"
+        return dt.strftime("%b %d")
+    except Exception:
+        return val[:10] if val else "—"
+
+
 def _badge(status: str) -> str:
     color = "#586069"
     for key, col in _STATUS_COLORS.items():
@@ -82,7 +115,7 @@ def _portal_table(jobs: list[dict]) -> str:
         bg = "#f6f8fa" if i % 2 == 0 else "#ffffff"
         rows += (
             f'<tr style="background:{bg}">'
-            f'<td style="{_td}">{j.get("date","")}</td>'
+            f'<td style="{_td};color:#555;white-space:nowrap">{_fmt_posted(j.get("posted_at",""))}</td>'
             f'<td style="{_td};font-weight:500">{j.get("title","")}</td>'
             f'<td style="{_td}">{j.get("company","")}</td>'
             f'<td style="{_td}">{_badge(j.get("status",""))}</td>'
@@ -93,7 +126,7 @@ def _portal_table(jobs: list[dict]) -> str:
     <table style="width:100%;border-collapse:collapse;margin-top:8px">
       <thead>
         <tr style="background:#f1f3f5">
-          <th style="{_th};color:#555">Date</th>
+          <th style="{_th};color:#555">Posted</th>
           <th style="{_th};color:#555">Job Title</th>
           <th style="{_th};color:#555">Company</th>
           <th style="{_th};color:#555">Status</th>

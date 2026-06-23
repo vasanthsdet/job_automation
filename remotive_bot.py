@@ -106,6 +106,7 @@ class RemotiveBot:
             "company":     job.get("company_name", "Unknown"),
             "url":         job.get("url", ""),
             "description": job.get("description", ""),
+            "posted_at":   job.get("publication_date", ""),
         }
 
     def run(self):
@@ -130,6 +131,7 @@ class RemotiveBot:
                 company=job["company"],
                 url=job["url"],
                 status=status,
+                posted_at=job.get("posted_at", ""),
             )
             time.sleep(random.uniform(0.2, 0.5))
 

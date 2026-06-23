@@ -155,6 +155,7 @@ class AdzunaBot:
             "location":    (job.get("location") or {}).get("display_name", ""),
             "url":         job.get("redirect_url", ""),
             "description": job.get("description", ""),
+            "posted_at":   job.get("created", ""),
         }
 
     def run(self):
@@ -184,6 +185,7 @@ class AdzunaBot:
                 company=job["company"],
                 url=job["url"],
                 status=status,
+                posted_at=job.get("posted_at", ""),
             )
             time.sleep(random.uniform(0.2, 0.5))
 

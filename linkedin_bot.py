@@ -282,11 +282,12 @@ class LinkedInBot:
         detail_calls = 0
 
         for job in to_process:
-            job_id  = self._job_id(job)
-            title   = self._job_title(job)
-            company = self._company_name(job)
-            url     = self._job_url(job_id)
-            is_easy = self._is_easy_apply(job)
+            job_id    = self._job_id(job)
+            title     = self._job_title(job)
+            company   = self._company_name(job)
+            url       = self._job_url(job_id)
+            is_easy   = self._is_easy_apply(job)
+            posted_at = str(job.get("listedAt", ""))  # Unix ms timestamp
 
             # Search result doesn't reliably carry company — fetch detail as fallback
             if company == "Unknown" and detail_calls < self.MAX_DETAIL_CALLS:
@@ -301,7 +302,7 @@ class LinkedInBot:
 
             self.tracker.log_application(
                 platform="LinkedIn", job_id=job_id, title=title,
-                company=company, url=url, status=status,
+                company=company, url=url, status=status, posted_at=posted_at,
             )
             collected += 1
             time.sleep(random.uniform(0.2, 0.5))

@@ -101,6 +101,7 @@ class ZipRecruiterBot:
             "company":     (job.get("hiring_company") or {}).get("name", "Unknown"),
             "url":         job.get("url", ""),
             "description": job.get("snippet", ""),
+            "posted_at":   job.get("posted_time") or job.get("date_posted", ""),
         }
 
     def run(self):
@@ -129,6 +130,7 @@ class ZipRecruiterBot:
                 company=job["company"],
                 url=job["url"],
                 status=status,
+                posted_at=job.get("posted_at", ""),
             )
             time.sleep(random.uniform(0.5, 1.0))
 

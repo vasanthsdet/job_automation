@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 
 TRACKER_FILE = "applied_jobs.csv"
-FIELDNAMES = ["date", "platform", "job_id", "title", "company", "url", "status", "resume_used"]
+FIELDNAMES = ["posted_at", "date", "platform", "job_id", "title", "company", "url", "status", "resume_used"]
 
 
 class JobTracker:
@@ -35,9 +35,11 @@ class JobTracker:
         url: str,
         status: str,
         resume_used: str = "",
+        posted_at: str = "",
     ):
         self._applied_ids.add(job_id)
         row = {
+            "posted_at": posted_at,
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "platform": platform,
             "job_id": job_id,

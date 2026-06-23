@@ -272,6 +272,7 @@ class DiceBot:
             "location":    job.get("location", ""),
             "url":         job.get("applyUrl") or f"https://www.dice.com/job-detail/{jid}",
             "description": job.get("summary", "") or job.get("jobDescription", ""),
+            "posted_at":   job.get("postedDate", ""),
         }
 
     # ── Main run ──────────────────────────────────────────────────
@@ -291,6 +292,7 @@ class DiceBot:
                     platform="Dice", job_id=job["job_id"],
                     title=job["title"], company=job["company"], url=job["url"],
                     status=f"Skipped - Rate Below ${MIN_HOURLY_RATE}/hr",
+                    posted_at=job.get("posted_at", ""),
                 )
                 continue
 
@@ -298,6 +300,7 @@ class DiceBot:
                 platform="Dice", job_id=job["job_id"],
                 title=job["title"], company=job["company"], url=job["url"],
                 status="Collected - Manual Apply",
+                posted_at=job.get("posted_at", ""),
             )
             saved += 1
 

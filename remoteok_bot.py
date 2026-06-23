@@ -121,6 +121,7 @@ class RemoteOKBot:
                 company=job.get("company", "Unknown"),
                 url=url,
                 status=status,
+                posted_at=str(job.get("epoch", "")),  # Unix seconds
             )
 
         print(f"[RemoteOK] Done — {saved} collected, {skipped} skipped (rate < ${MIN_HOURLY_RATE}/hr)")
