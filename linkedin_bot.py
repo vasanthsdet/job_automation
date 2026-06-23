@@ -226,24 +226,22 @@ class LinkedInBot:
     def _job_title(self, job: dict) -> str:
         return job.get("title", "QA Contract Role")
 
+    _debug_company_logged = False  # print raw keys once to help diagnose
+
     def _company_name(self, job: dict) -> str:
         try:
-            # Most reliable in search results: primaryDescription.text
             primary = job.get("primaryDescription", {})
             if isinstance(primary, dict) and primary.get("text"):
                 return str(primary["text"]).strip()
-            # subtitle fallback (some API versions use this for company)
             subtitle = job.get("subtitle", {})
             if isinstance(subtitle, dict) and subtitle.get("text"):
                 return str(subtitle["text"]).strip()
-            # direct string fields
             for field in ("companyName", "company"):
                 val = job.get(field)
                 if isinstance(val, str) and val.strip():
                     return val.strip()
                 if isinstance(val, dict) and val.get("name"):
                     return str(val["name"]).strip()
-            # nested companyDetails (search result variant)
             co = job.get("companyDetails", {})
             if isinstance(co, dict):
                 for v in co.values():
@@ -255,12 +253,20 @@ class LinkedInBot:
                             return str(v["name"]).strip()
         except Exception:
             pass
+        # Log raw keys once so we can see what the search result actually contains
+        if not self._debug_company_logged:
+            self.__class__._debug_company_logged = True
+            print(f"  [DEBUG company] keys={list(job.keys())}")
+            print(f"  [DEBUG company] primaryDescription={job.get('primaryDescription')}")
+            print(f"  [DEBUG company] companyDetails={str(job.get('companyDetails',''))[:200]}")
         return "Unknown"
 
     def _job_url(self, job_id: str) -> str:
         return f"https://www.linkedin.com/jobs/view/{job_id}/"
 
     # ── Main run ──────────────────────────────────────────────
+
+    MAX_DETAIL_CALLS = 120  # cap detail lookups to bound runtime
 
     def run(self):
         self.login()
@@ -272,13 +278,23 @@ class LinkedInBot:
         ]
         print(f"[LinkedIn] {len(to_process)} new jobs to collect")
 
-        collected = 0
+        collected    = 0
+        detail_calls = 0
+
         for job in to_process:
             job_id  = self._job_id(job)
             title   = self._job_title(job)
             company = self._company_name(job)
             url     = self._job_url(job_id)
             is_easy = self._is_easy_apply(job)
+
+            # Search result doesn't reliably carry company — fetch detail as fallback
+            if company == "Unknown" and detail_calls < self.MAX_DETAIL_CALLS:
+                detail = self._get_job_detail(job_id)
+                if detail.get("company"):
+                    company = detail["company"]
+                detail_calls += 1
+                time.sleep(random.uniform(0.5, 1.0))
 
             status = "Collected - Easy Apply Available" if is_easy else "Collected - Manual Apply"
             print(f"  [{'Easy' if is_easy else 'Ext  '}] {title} @ {company}")
@@ -288,6 +304,6 @@ class LinkedInBot:
                 company=company, url=url, status=status,
             )
             collected += 1
-            time.sleep(random.uniform(0.3, 0.8))
+            time.sleep(random.uniform(0.2, 0.5))
 
-        print(f"\n[LinkedIn] Done. Collected: {collected}")
+        print(f"\n[LinkedIn] Done. Collected: {collected}  Detail lookups: {detail_calls}")
