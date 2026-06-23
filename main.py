@@ -7,7 +7,7 @@ Portals searched every run:
   3  ZipRecruiter→ Jobs API (optional key, Texas + Remote, Contract)
   4  Remotive    → public REST API (remote tech jobs, QA/SDET focus, no key needed)
   5  Dice        → public REST API (Texas + Remote, Contract, top tech board)
-  6  LinkedIn    → Voyager REST API → Easy Apply → AI-tailored resume
+  6  LinkedIn    → Voyager REST API → collect all jobs (Easy Apply flagged in report)
 
 Note: Stack Overflow Jobs shut down in March 2022 and is no longer available.
 Note: Wellfound (AngelList) has no public API (requires OAuth) — replaced by Remotive.
@@ -17,10 +17,9 @@ After all searches:
 
 Usage:
     python main.py                    # full workflow
-    python main.py --collect-only     # search all portals, skip LinkedIn apply
-    python main.py --linkedin-only    # only LinkedIn Easy Apply
-    python main.py --dry-run          # search only, no apply, no email
-    python main.py --portal dice      # run a single portal (dice/indeed/remoteok/ziprecruiter)
+    python main.py --dry-run          # search only, no email
+    python main.py --portal dice      # run a single portal (dice/remoteok/ziprecruiter/linkedin)
+    python main.py --portal linkedin  # LinkedIn only
 
 Runtime credential overrides (never stored — set env vars before config loads):
     --linkedin-email EMAIL            override LINKEDIN_EMAIL
@@ -61,7 +60,7 @@ def _set_runtime_env():
 _set_runtime_env()
 # ─────────────────────────────────────────────────────────────────
 
-from config import LINKEDIN_EMAIL, ANTHROPIC_API_KEY, BASE_RESUME_PATH, ZIPRECRUITER_API_KEY
+from config import LINKEDIN_EMAIL, ZIPRECRUITER_API_KEY
 from job_tracker import JobTracker
 from linkedin_bot import LinkedInBot
 from adzuna_bot import AdzunaBot
@@ -74,12 +73,8 @@ from email_reporter import send_report
 
 def _validate():
     errors = []
-    if not ANTHROPIC_API_KEY:
-        errors.append("ANTHROPIC_API_KEY not set — add to GitHub Secrets or pass as env var")
     if not LINKEDIN_EMAIL:
         errors.append("LINKEDIN_EMAIL not set — pass --linkedin-email or set env var LINKEDIN_EMAIL")
-    if not Path(BASE_RESUME_PATH).exists():
-        errors.append(f"Resume not found at '{BASE_RESUME_PATH}' — add RESUME_BASE64 to GitHub Secrets")
     if errors:
         print("\n[ERROR] Fix before running:\n")
         for e in errors:
@@ -87,13 +82,14 @@ def _validate():
         sys.exit(1)
 
 
-# Maps CLI name → bot class (collection-only portals)
+# Maps CLI name → bot class
 COLLECTION_BOTS = {
     "adzuna":       AdzunaBot,
     "remoteok":     RemoteOKBot,
     "ziprecruiter": ZipRecruiterBot,
     "remotive":     RemotiveBot,
     "dice":         DiceBot,
+    "linkedin":     LinkedInBot,
 }
 
 
@@ -112,11 +108,10 @@ def main():
     run_start = datetime.now()
     args      = sys.argv[1:]
 
-    collect_only  = "--collect-only" in args
-    linkedin_only = "--linkedin-only" in args
+    collect_only  = "--collect-only" in args   # run all portals except LinkedIn (for cloud CI)
     dry_run       = "--dry-run" in args
-    skip_tailor   = "--skip-tailor" in args
     no_email      = "--no-email" in args
+    append_mode   = "--append" in args         # don't reset CSV — append to downloaded artifact
     portal_filter = None
     if "--portal" in args:
         idx = args.index("--portal")
@@ -127,37 +122,30 @@ def main():
                 sys.exit(1)
 
     print("=" * 60)
-    print("  QA Job Application Workflow  (HTTP/API only)")
-    print(f"  Portals: Adzuna · RemoteOK · ZipRecruiter · LinkedIn")
+    print("  QA Job Collection Workflow  (HTTP/API only)")
+    print(f"  Portals: Adzuna · RemoteOK · ZipRecruiter · Remotive · Dice · LinkedIn")
     print(f"  Started: {run_start.strftime('%Y-%m-%d %H:%M')}")
     print("=" * 60)
     _validate()
 
     if dry_run:
-        print("\n[DRY RUN] Searching all portals — no applications submitted\n")
+        print("\n[DRY RUN] Searching all portals — no email sent\n")
 
-    tracker = JobTracker()
+    tracker = JobTracker(append=append_mode)
 
-    # ── Collection portals ────────────────────────────────────
-    if not linkedin_only:
+    # ── Portal collection ─────────────────────────────────────
+    if collect_only:
+        # Cloud CI: skip LinkedIn (needs self-hosted runner / local IP)
+        non_linkedin = {k: v for k, v in COLLECTION_BOTS.items() if k != "linkedin"}
+        for step, (name, BotClass) in enumerate(non_linkedin.items(), 1):
+            label = name.capitalize()
+            print(f"\n── Step {step}: {label} ─────────────────────────────────────")
+            try:
+                BotClass(tracker).run()
+            except Exception as e:
+                print(f"[{label}] ERROR: {e}")
+    else:
         run_collection(tracker, portal_filter)
-
-    # ── LinkedIn Easy Apply ───────────────────────────────────
-    next_step = len(COLLECTION_BOTS) + 1 if not portal_filter else 2
-    if not collect_only and not dry_run and not portal_filter:
-        print(f"\n── Step {next_step}: LinkedIn Easy Apply ───────────────────────")
-        try:
-            LinkedInBot(tracker, skip_tailor=skip_tailor).run()
-        except Exception as e:
-            print(f"[LinkedIn] ERROR: {e}")
-    elif linkedin_only and not dry_run:
-        print(f"\n── LinkedIn Easy Apply (only) ────────────────────────────")
-        try:
-            LinkedInBot(tracker, skip_tailor=skip_tailor).run()
-        except Exception as e:
-            print(f"[LinkedIn] ERROR: {e}")
-    elif dry_run:
-        print("\n[DRY RUN] Skipping LinkedIn applications")
 
     # ── Email report ──────────────────────────────────────────
     if not dry_run and not no_email:

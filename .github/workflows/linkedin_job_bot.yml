@@ -114,52 +114,40 @@ jobs:
         env:
           LINKEDIN_EMAIL:     ${{ inputs.linkedin_email || secrets.LINKEDIN_EMAIL }}
           LINKEDIN_PASSWORD:  ${{ inputs.linkedin_password || secrets.LINKEDIN_PASSWORD }}
-          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
           ADZUNA_APP_ID:      ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY:     ${{ secrets.ADZUNA_APP_KEY }}
           EMAIL_SENDER:       ${{ secrets.EMAIL_SENDER }}
           EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
           EMAIL_RECIPIENTS:   ${{ inputs.email_recipients || 'revathibathina11@gmail.com,dama.vasanth@gmail.com' }}
           JOB_SEARCH_KEYWORDS: ${{ inputs.technologies || 'QA Engineer,SDET,QA Automation,Automation QA' }}
-          ADZUNA_KEYWORDS:    ${{ inputs.technologies }}
         run: |
           @"
           LINKEDIN_EMAIL=$env:LINKEDIN_EMAIL
           LINKEDIN_PASSWORD=$env:LINKEDIN_PASSWORD
-          ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY
           ADZUNA_APP_ID=$env:ADZUNA_APP_ID
           ADZUNA_APP_KEY=$env:ADZUNA_APP_KEY
           EMAIL_SENDER=$env:EMAIL_SENDER
           EMAIL_APP_PASSWORD=$env:EMAIL_APP_PASSWORD
           EMAIL_RECIPIENTS=$env:EMAIL_RECIPIENTS
           JOB_SEARCH_KEYWORDS=$env:JOB_SEARCH_KEYWORDS
-          ADZUNA_KEYWORDS=$env:ADZUNA_KEYWORDS
           PRIMARY_LOCATION=Texas, United States
           INCLUDE_REMOTE=true
           JOB_TYPE=C
-          MAX_JOBS_TO_APPLY=10
           LISTED_AT_DAYS=1
           MIN_HOURLY_RATE=50
-          EXPECTED_HOURLY_RATE=50
-          BASE_RESUME_PATH=resume/base_resume.docx
           TRACKER_FILE=applied_jobs.csv
-          YEARS_OF_EXPERIENCE=11
-          WORK_AUTHORIZATION=Yes
-          WILLING_TO_RELOCATE=YES
           "@ | Out-File -FilePath .env -Encoding utf8
 
-      - name: Restore resume
-        shell: powershell
-        env:
-          RESUME_BASE64: ${{ secrets.RESUME_BASE64 }}
-        run: |
-          $bytes = [Convert]::FromBase64String($env:RESUME_BASE64)
-          New-Item -ItemType Directory -Force resume | Out-Null
-          [IO.File]::WriteAllBytes("$PWD\resume\base_resume.docx", $bytes)
+      - name: Download cloud collect results
+        uses: actions/download-artifact@v4
+        with:
+          name: collect-results-${{ github.run_number }}
+          path: .
+        continue-on-error: true
 
-      - name: Run LinkedIn Easy Apply
+      - name: Run LinkedIn (collect + email report)
         shell: powershell
-        run: python main.py --linkedin-only
+        run: python main.py --portal linkedin --append
 
       - name: Upload results
         if: always()

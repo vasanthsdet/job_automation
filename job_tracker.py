@@ -1,17 +1,21 @@
 import csv
 from datetime import datetime
+from pathlib import Path
 
 TRACKER_FILE = "applied_jobs.csv"
 FIELDNAMES = ["date", "platform", "job_id", "title", "company", "url", "status", "resume_used"]
 
 
 class JobTracker:
-    def __init__(self, filepath=TRACKER_FILE):
+    def __init__(self, filepath=TRACKER_FILE, append=False):
         self.filepath = filepath
         self._applied_ids: set[str] = set()
-        # Always start fresh — CSV is an artifact per run, not persisted in git
-        with open(self.filepath, "w", newline="", encoding="utf-8") as f:
-            csv.DictWriter(f, fieldnames=FIELDNAMES).writeheader()
+        if append and Path(filepath).exists():
+            # Load existing IDs so we don't re-log jobs from the cloud collect step
+            self._load_applied_ids()
+        else:
+            with open(self.filepath, "w", newline="", encoding="utf-8") as f:
+                csv.DictWriter(f, fieldnames=FIELDNAMES).writeheader()
 
     def _load_applied_ids(self):
         with open(self.filepath, "r", encoding="utf-8") as f:

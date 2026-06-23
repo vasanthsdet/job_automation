@@ -20,7 +20,7 @@ from config import (
 
 # ── Portal display config (order matters) ────────────────────────────
 PORTALS = [
-    ("LinkedIn",    "#0077b5", "LinkedIn Easy Apply"),
+    ("LinkedIn",    "#0077b5", "LinkedIn — Collected Jobs"),
     ("Adzuna",      "#e84c4c", "Adzuna — Aggregator (Texas + Remote)"),
     ("RemoteOK",    "#4caf50", "RemoteOK — Remote US"),
     ("ZipRecruiter","#f4511e", "ZipRecruiter — Texas + Remote"),
@@ -30,17 +30,18 @@ PORTALS = [
 
 # Status badge colors
 _STATUS_COLORS = {
-    "Easy Apply - Applied":         "#22863a",
-    "Applied":                      "#22863a",
-    "Easy Apply - Click to Apply":  "#22863a",
-    "Collected - Manual Apply":     "#0077b5",
-    "Collected - External Apply":   "#0077b5",
-    "Easy Apply - Failed":          "#e36209",
-    "Easy Apply - Error":           "#cb2431",
-    "Failed - Manual Apply":        "#e36209",
-    "Error":                        "#cb2431",
-    "Skipped - 100+ Applicants":    "#6f42c1",
-    "Skipped - Rate Below":         "#586069",
+    "Easy Apply - Applied":           "#22863a",
+    "Applied":                        "#22863a",
+    "Easy Apply - Click to Apply":    "#22863a",
+    "Collected - Easy Apply Available": "#0a66c2",
+    "Collected - Manual Apply":       "#0077b5",
+    "Collected - External Apply":     "#0077b5",
+    "Easy Apply - Failed":            "#e36209",
+    "Easy Apply - Error":             "#cb2431",
+    "Failed - Manual Apply":          "#e36209",
+    "Error":                          "#cb2431",
+    "Skipped - 100+ Applicants":      "#6f42c1",
+    "Skipped - Rate Below":           "#586069",
 }
 
 _th = "padding:10px 12px;text-align:left;white-space:nowrap;font-size:13px"
@@ -64,11 +65,11 @@ def _apply_link(job: dict) -> str:
     status = job.get("status", "")
     if not url:
         return "—"
-    if status == "Easy Apply - Click to Apply":
+    if status in ("Easy Apply - Click to Apply", "Collected - Easy Apply Available"):
         return (
-            f'<a href="{url}" style="background:#0077b5;color:#fff;padding:4px 12px;'
+            f'<a href="{url}" style="background:#0a66c2;color:#fff;padding:4px 12px;'
             f'border-radius:4px;text-decoration:none;font-size:12px;font-weight:bold">'
-            f'Apply Now</a>'
+            f'Easy Apply</a>'
         )
     return f'<a href="{url}" style="color:#0077b5;font-size:13px">View Job</a>'
 
