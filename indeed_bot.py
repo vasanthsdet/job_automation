@@ -100,6 +100,7 @@ class IndeedBot:
                 "company":     company,
                 "url":         link,
                 "description": _strip_html(desc_html),
+                "posted_at":   pub_date,
             })
 
         return jobs
@@ -149,6 +150,7 @@ class IndeedBot:
                 company=job["company"],
                 url=job["url"],
                 status=status,
+                posted_at=job.get("posted_at", ""),
             )
 
         print(f"[Indeed] Done — {saved} collected, {skipped} skipped (rate < ${MIN_HOURLY_RATE}/hr)")

@@ -7,7 +7,9 @@ Portals searched every run:
   3  ZipRecruiter→ Jobs API (optional key, Texas + Remote, Contract)
   4  Remotive    → public REST API (remote tech jobs, QA/SDET focus, no key needed)
   5  Dice        → public REST API (Texas + Remote, Contract, top tech board)
-  6  LinkedIn    → Voyager REST API → collect all jobs (Easy Apply flagged in report)
+  6  Indeed      → public RSS feed (Texas + Remote, Contract, no key needed)
+  7  Glassdoor   → HTML scraping (Texas + Remote; may return 0 if blocked)
+  8  LinkedIn    → Voyager REST API → collect all jobs (Easy Apply flagged in report)
 
 Note: Stack Overflow Jobs shut down in March 2022 and is no longer available.
 Note: Wellfound (AngelList) has no public API (requires OAuth) — replaced by Remotive.
@@ -68,6 +70,8 @@ from remoteok_bot import RemoteOKBot
 from ziprecruiter_bot import ZipRecruiterBot
 from remotive_bot import RemotiveBot
 from dice_bot import DiceBot
+from indeed_bot import IndeedBot
+from glassdoor_bot import GlassdoorBot
 from email_reporter import send_report
 
 
@@ -89,6 +93,8 @@ COLLECTION_BOTS = {
     "ziprecruiter": ZipRecruiterBot,
     "remotive":     RemotiveBot,
     "dice":         DiceBot,
+    "indeed":       IndeedBot,
+    "glassdoor":    GlassdoorBot,
     "linkedin":     LinkedInBot,
 }
 
@@ -123,7 +129,7 @@ def main():
 
     print("=" * 60)
     print("  QA Job Collection Workflow  (HTTP/API only)")
-    print(f"  Portals: Adzuna · RemoteOK · ZipRecruiter · Remotive · Dice · LinkedIn")
+    print(f"  Portals: Adzuna · RemoteOK · ZipRecruiter · Remotive · Dice · Indeed · Glassdoor · LinkedIn")
     print(f"  Started: {run_start.strftime('%Y-%m-%d %H:%M')}")
     print("=" * 60)
     _validate()

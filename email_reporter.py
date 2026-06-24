@@ -22,10 +22,12 @@ from config import (
 PORTALS = [
     ("LinkedIn",    "#0077b5", "LinkedIn — Collected Jobs"),
     ("Adzuna",      "#e84c4c", "Adzuna — Aggregator (Texas + Remote)"),
+    ("Indeed",      "#2164f3", "Indeed — Aggregator (Texas + Remote)"),
     ("RemoteOK",    "#4caf50", "RemoteOK — Remote US"),
     ("ZipRecruiter","#f4511e", "ZipRecruiter — Texas + Remote"),
     ("Remotive",    "#2196f3", "Remotive — Remote US-Eligible"),
     ("Dice",        "#00a0dc", "Dice — Tech Contractor Board"),
+    ("Glassdoor",   "#0caa41", "Glassdoor — Company Reviews + Jobs"),
 ]
 
 # Status badge colors
