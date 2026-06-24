@@ -271,13 +271,13 @@ class LinkedInBot:
         for job in to_process:
             job_id    = self._job_id(job)
             title     = self._job_title(job)
-            company   = self._company_name(job)
             url       = self._job_url(job_id)
             is_easy   = self._is_easy_apply(job)
             posted_at = str(job.get("listedAt", ""))  # Unix ms timestamp
 
-            # Search result doesn't reliably carry company — fetch detail as fallback
-            if company == "Unknown" and detail_calls < self.MAX_DETAIL_CALLS:
+            # Search results carry no company info — always resolve via detail API
+            company = "Unknown"
+            if detail_calls < self.MAX_DETAIL_CALLS:
                 detail = self._get_job_detail(job_id)
                 if detail.get("company"):
                     company = detail["company"]
