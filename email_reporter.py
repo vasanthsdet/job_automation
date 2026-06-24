@@ -44,6 +44,21 @@ _STATUS_COLORS = {
     "Skipped - Rate Below":           "#586069",
 }
 
+MAX_EMAIL_ROWS = 40   # per portal — keeps HTML under Gmail's 102KB clip limit
+
+# Shared CSS injected once in <head> — avoids repeating inline styles for every cell
+_EMAIL_CSS = """
+<style>
+.jt{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+.jt th{padding:9px 11px;text-align:left;white-space:nowrap;color:#555;background:#f1f3f5}
+.jt td{padding:7px 11px;border-bottom:1px solid #eee}
+.jt tr.r0{background:#f6f8fa}.jt tr.r1{background:#fff}
+.jt td.ts{color:#555;white-space:nowrap}.jt td.tt{font-weight:500}
+a.va{color:#0077b5;font-size:13px}
+a.ea{background:#0a66c2;color:#fff;padding:3px 10px;border-radius:4px;
+     text-decoration:none;font-size:12px;font-weight:bold}
+</style>"""
+
 _th = "padding:10px 12px;text-align:left;white-space:nowrap;font-size:13px"
 _td = "padding:8px 12px;border-bottom:1px solid #eee;font-size:13px"
 
@@ -93,48 +108,51 @@ def _badge(status: str) -> str:
     )
 
 
-def _apply_link(job: dict) -> str:
+
+def _apply_link_compact(job: dict) -> str:
     url    = job.get("url", "")
     status = job.get("status", "")
     if not url:
         return "—"
     if status in ("Easy Apply - Click to Apply", "Collected - Easy Apply Available"):
-        return (
-            f'<a href="{url}" style="background:#0a66c2;color:#fff;padding:4px 12px;'
-            f'border-radius:4px;text-decoration:none;font-size:12px;font-weight:bold">'
-            f'Easy Apply</a>'
-        )
-    return f'<a href="{url}" style="color:#0077b5;font-size:13px">View Job</a>'
+        return f'<a href="{url}" class="ea">Easy Apply</a>'
+    return f'<a href="{url}" class="va">View</a>'
 
 
 def _portal_table(jobs: list[dict]) -> str:
     if not jobs:
         return '<p style="color:#888;font-size:13px;margin:8px 0 0">No jobs found this run.</p>'
+
+    total    = len(jobs)
+    display  = jobs[:MAX_EMAIL_ROWS]
+    truncated = total > MAX_EMAIL_ROWS
+
     rows = ""
-    for i, j in enumerate(jobs):
-        bg = "#f6f8fa" if i % 2 == 0 else "#ffffff"
+    for i, j in enumerate(display):
         rows += (
-            f'<tr style="background:{bg}">'
-            f'<td style="{_td};color:#555;white-space:nowrap">{_fmt_posted(j.get("posted_at",""))}</td>'
-            f'<td style="{_td};font-weight:500">{j.get("title","")}</td>'
-            f'<td style="{_td}">{j.get("company","")}</td>'
-            f'<td style="{_td}">{_badge(j.get("status",""))}</td>'
-            f'<td style="{_td}">{_apply_link(j)}</td>'
+            f'<tr class="r{i%2}">'
+            f'<td class="ts">{_fmt_posted(j.get("posted_at",""))}</td>'
+            f'<td class="tt">{j.get("title","")}</td>'
+            f'<td>{j.get("company","")}</td>'
+            f'<td>{_badge(j.get("status",""))}</td>'
+            f'<td>{_apply_link_compact(j)}</td>'
             f'</tr>'
         )
+
+    note = ""
+    if truncated:
+        note = (
+            f'<p style="font-size:12px;color:#586069;margin:6px 0 0">'
+            f'Showing {MAX_EMAIL_ROWS} of {total} — <b>see attached CSV for full list</b></p>'
+        )
+
     return f"""
-    <table style="width:100%;border-collapse:collapse;margin-top:8px">
-      <thead>
-        <tr style="background:#f1f3f5">
-          <th style="{_th};color:#555">Posted</th>
-          <th style="{_th};color:#555">Job Title</th>
-          <th style="{_th};color:#555">Company</th>
-          <th style="{_th};color:#555">Status</th>
-          <th style="{_th};color:#555">Link</th>
-        </tr>
-      </thead>
+    <table class="jt">
+      <thead><tr>
+        <th>Posted</th><th>Job Title</th><th>Company</th><th>Status</th><th>Link</th>
+      </tr></thead>
       <tbody>{rows}</tbody>
-    </table>"""
+    </table>{note}"""
 
 
 def _portal_section(name: str, color: str, label: str, jobs: list[dict]) -> str:
@@ -257,7 +275,7 @@ def _build_html(jobs: list[dict], run_start: datetime) -> str:
     return f"""
     <!DOCTYPE html>
     <html>
-    <head><meta charset="UTF-8"></head>
+    <head><meta charset="UTF-8">{_EMAIL_CSS}</head>
     <body style="font-family:Arial,sans-serif;color:#24292e;max-width:980px;margin:0 auto;padding:20px">
 
       <div style="background:#0077b5;color:#fff;padding:20px 24px;border-radius:8px 8px 0 0">
