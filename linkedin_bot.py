@@ -229,12 +229,25 @@ class LinkedInBot:
     def _job_url(self, job_id: str) -> str:
         return f"https://www.linkedin.com/jobs/view/{job_id}/"
 
+    _debug_detail_logged = False  # dump detail keys once to diagnose structure
+
     def _get_job_detail(self, job_id: str) -> dict:
         """Fetch full job detail — company name and posting time (absent in search results)."""
         try:
             detail  = self.api.get_job(job_id)
+
+            # ── Debug: show keys and company-related fields once ──
+            if not self.__class__._debug_detail_logged:
+                self.__class__._debug_detail_logged = True
+                print(f"  [DEBUG detail] keys={list(detail.keys())}")
+                print(f"  [DEBUG detail] companyDetails={str(detail.get('companyDetails',''))[:300]}")
+                print(f"  [DEBUG detail] companyName={detail.get('companyName')}")
+                print(f"  [DEBUG detail] listedAt={detail.get('listedAt')} originalListedAt={detail.get('originalListedAt')}")
+
+            # ── Company extraction — try every known path ──────────
             company = ""
-            co      = detail.get("companyDetails", {})
+            # Path 1: companyDetails.*.companyResolutionResult.name
+            co = detail.get("companyDetails", {})
             if isinstance(co, dict):
                 for v in co.values():
                     if isinstance(v, dict):
@@ -242,19 +255,32 @@ class LinkedInBot:
                         if isinstance(crr, dict) and crr.get("name"):
                             company = crr["name"]
                             break
+                        # nested company object
+                        nested = v.get("company", {})
+                        if isinstance(nested, dict) and nested.get("name"):
+                            company = nested["name"]
+                            break
                         if v.get("name"):
                             company = str(v["name"])
                             break
+            # Path 2: top-level companyName string
             if not company:
-                company = str(detail.get("companyName", "")).strip()
-            # Posting time — Unix ms, try multiple field names
+                company = str(detail.get("companyName") or "").strip()
+            # Path 3: top-level company dict
+            if not company:
+                co_obj = detail.get("company", {})
+                if isinstance(co_obj, dict):
+                    company = str(co_obj.get("name") or "").strip()
+
+            # ── Posting time — Unix ms ─────────────────────────────
             listed_at = (
                 detail.get("listedAt")
                 or detail.get("originalListedAt")
                 or detail.get("postedAt")
             )
             return {"company": company, "listed_at": str(listed_at) if listed_at else ""}
-        except Exception:
+        except Exception as e:
+            print(f"  [detail] Error for {job_id}: {e}")
             return {"company": "", "listed_at": ""}
 
     # ── Main run ──────────────────────────────────────────────

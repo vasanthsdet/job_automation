@@ -304,6 +304,7 @@ def send_report(run_start: datetime | None = None):
         run_start = datetime.now()
 
     jobs = _read_jobs()
+    print(f"[Email] Tracker has {len(jobs)} jobs")
     if not jobs:
         print("[Email] No jobs in tracker — skipping email")
         return
