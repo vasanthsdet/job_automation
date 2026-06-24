@@ -226,43 +226,30 @@ class LinkedInBot:
     def _job_title(self, job: dict) -> str:
         return job.get("title", "QA Contract Role")
 
-    _debug_company_logged = False  # print raw keys once to help diagnose
+    def _job_url(self, job_id: str) -> str:
+        return f"https://www.linkedin.com/jobs/view/{job_id}/"
 
-    def _company_name(self, job: dict) -> str:
+    def _get_job_detail(self, job_id: str) -> dict:
+        """Fetch full job detail to get company name (search results carry no company info)."""
         try:
-            primary = job.get("primaryDescription", {})
-            if isinstance(primary, dict) and primary.get("text"):
-                return str(primary["text"]).strip()
-            subtitle = job.get("subtitle", {})
-            if isinstance(subtitle, dict) and subtitle.get("text"):
-                return str(subtitle["text"]).strip()
-            for field in ("companyName", "company"):
-                val = job.get(field)
-                if isinstance(val, str) and val.strip():
-                    return val.strip()
-                if isinstance(val, dict) and val.get("name"):
-                    return str(val["name"]).strip()
-            co = job.get("companyDetails", {})
+            detail  = self.api.get_job(job_id)
+            company = ""
+            co      = detail.get("companyDetails", {})
             if isinstance(co, dict):
                 for v in co.values():
                     if isinstance(v, dict):
                         crr = v.get("companyResolutionResult", {})
                         if isinstance(crr, dict) and crr.get("name"):
-                            return str(crr["name"]).strip()
+                            company = crr["name"]
+                            break
                         if v.get("name"):
-                            return str(v["name"]).strip()
+                            company = str(v["name"])
+                            break
+            if not company:
+                company = str(detail.get("companyName", "")).strip()
+            return {"company": company}
         except Exception:
-            pass
-        # Log raw keys once so we can see what the search result actually contains
-        if not self._debug_company_logged:
-            self.__class__._debug_company_logged = True
-            print(f"  [DEBUG company] keys={list(job.keys())}")
-            print(f"  [DEBUG company] primaryDescription={job.get('primaryDescription')}")
-            print(f"  [DEBUG company] companyDetails={str(job.get('companyDetails',''))[:200]}")
-        return "Unknown"
-
-    def _job_url(self, job_id: str) -> str:
-        return f"https://www.linkedin.com/jobs/view/{job_id}/"
+            return {"company": ""}
 
     # ── Main run ──────────────────────────────────────────────
 
