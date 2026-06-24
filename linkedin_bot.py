@@ -230,7 +230,7 @@ class LinkedInBot:
         return f"https://www.linkedin.com/jobs/view/{job_id}/"
 
     def _get_job_detail(self, job_id: str) -> dict:
-        """Fetch full job detail to get company name (search results carry no company info)."""
+        """Fetch full job detail — company name and posting time (absent in search results)."""
         try:
             detail  = self.api.get_job(job_id)
             company = ""
@@ -247,9 +247,15 @@ class LinkedInBot:
                             break
             if not company:
                 company = str(detail.get("companyName", "")).strip()
-            return {"company": company}
+            # Posting time — Unix ms, try multiple field names
+            listed_at = (
+                detail.get("listedAt")
+                or detail.get("originalListedAt")
+                or detail.get("postedAt")
+            )
+            return {"company": company, "listed_at": str(listed_at) if listed_at else ""}
         except Exception:
-            return {"company": ""}
+            return {"company": "", "listed_at": ""}
 
     # ── Main run ──────────────────────────────────────────────
 
@@ -273,14 +279,13 @@ class LinkedInBot:
             title     = self._job_title(job)
             url       = self._job_url(job_id)
             is_easy   = self._is_easy_apply(job)
-            posted_at = str(job.get("listedAt", ""))  # Unix ms timestamp
-
-            # Search results carry no company info — always resolve via detail API
-            company = "Unknown"
+            # Search results carry no company or posting time — resolve via detail API
+            company   = "Unknown"
+            posted_at = ""
             if detail_calls < self.MAX_DETAIL_CALLS:
-                detail = self._get_job_detail(job_id)
-                if detail.get("company"):
-                    company = detail["company"]
+                detail    = self._get_job_detail(job_id)
+                company   = detail.get("company") or "Unknown"
+                posted_at = detail.get("listed_at", "")
                 detail_calls += 1
                 time.sleep(random.uniform(0.5, 1.0))
 
