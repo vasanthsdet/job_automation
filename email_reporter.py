@@ -44,9 +44,8 @@ _STATUS_COLORS = {
     "Skipped - Rate Below":           "#586069",
 }
 
-MAX_EMAIL_ROWS = 40   # per portal — keeps HTML under Gmail's 102KB clip limit
-
-# Shared CSS injected once in <head> — avoids repeating inline styles for every cell
+# Shared CSS — one definition covers all rows; badge colours each get a class.
+# Shrinks per-row HTML from ~420 to ~220 chars, fitting 400+ jobs under Gmail's 102KB clip.
 _EMAIL_CSS = """
 <style>
 .jt{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
@@ -57,6 +56,9 @@ _EMAIL_CSS = """
 a.va{color:#0077b5;font-size:13px}
 a.ea{background:#0a66c2;color:#fff;padding:3px 10px;border-radius:4px;
      text-decoration:none;font-size:12px;font-weight:bold}
+.bx{padding:2px 8px;border-radius:10px;font-size:11px;white-space:nowrap;color:#fff}
+.bg{background:#22863a}.bb{background:#0a66c2}.bc{background:#0077b5}
+.bo{background:#e36209}.br{background:#cb2431}.bp{background:#6f42c1}.bs{background:#586069}
 </style>"""
 
 _th = "padding:10px 12px;text-align:left;white-space:nowrap;font-size:13px"
@@ -97,15 +99,16 @@ def _fmt_posted(val: str) -> str:
 
 
 def _badge(status: str) -> str:
-    color = "#586069"
-    for key, col in _STATUS_COLORS.items():
-        if status.startswith(key) or status == key:
-            color = col
-            break
-    return (
-        f'<span style="background:{color};color:#fff;padding:2px 8px;'
-        f'border-radius:10px;font-size:11px;white-space:nowrap">{status}</span>'
-    )
+    s = status.lower()
+    if "easy apply available" in s:          cls = "bb"  # linkedin blue
+    elif "collected" in s:                   cls = "bc"  # blue
+    elif ("applied" in s or "easy apply" in s) and "fail" not in s and "error" not in s:
+                                             cls = "bg"  # green
+    elif "100+" in s or "applicants" in s:   cls = "bp"  # purple
+    elif "fail" in s:                        cls = "bo"  # orange
+    elif "error" in s:                       cls = "br"  # red
+    else:                                    cls = "bs"  # grey (skipped / unknown)
+    return f'<span class="bx {cls}">{status}</span>'
 
 
 
@@ -123,12 +126,8 @@ def _portal_table(jobs: list[dict]) -> str:
     if not jobs:
         return '<p style="color:#888;font-size:13px;margin:8px 0 0">No jobs found this run.</p>'
 
-    total    = len(jobs)
-    display  = jobs[:MAX_EMAIL_ROWS]
-    truncated = total > MAX_EMAIL_ROWS
-
     rows = ""
-    for i, j in enumerate(display):
+    for i, j in enumerate(jobs):
         rows += (
             f'<tr class="r{i%2}">'
             f'<td class="ts">{_fmt_posted(j.get("posted_at",""))}</td>'
@@ -139,20 +138,13 @@ def _portal_table(jobs: list[dict]) -> str:
             f'</tr>'
         )
 
-    note = ""
-    if truncated:
-        note = (
-            f'<p style="font-size:12px;color:#586069;margin:6px 0 0">'
-            f'Showing {MAX_EMAIL_ROWS} of {total} — <b>see attached CSV for full list</b></p>'
-        )
-
     return f"""
     <table class="jt">
       <thead><tr>
         <th>Posted</th><th>Job Title</th><th>Company</th><th>Status</th><th>Link</th>
       </tr></thead>
       <tbody>{rows}</tbody>
-    </table>{note}"""
+    </table>"""
 
 
 def _portal_section(name: str, color: str, label: str, jobs: list[dict]) -> str:
