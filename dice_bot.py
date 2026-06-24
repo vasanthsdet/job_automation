@@ -229,12 +229,12 @@ class DiceBot:
                 if j.get("id"):
                     seen[j["id"]] = j
 
-            if not api_jobs and not self._api_ok:
+            if not api_jobs:
                 rss_jobs = self._rss_fetch(kw, location="Texas")
                 for j in rss_jobs:
                     if j.get("id"):
                         seen.setdefault(j["id"], j)
-                print(f"  → {len(seen) - before} RSS results (Texas)")
+                print(f"  → {len(seen) - before} RSS fallback results (Texas)")
             else:
                 print(f"  → {len(seen) - before} API results (Texas)")
 
@@ -248,12 +248,12 @@ class DiceBot:
                     if j.get("id"):
                         seen.setdefault(j["id"], j)
 
-                if not api_remote and not self._api_ok:
+                if not api_remote:
                     rss_jobs = self._rss_fetch(kw, remote=True)
                     for j in rss_jobs:
                         if j.get("id"):
                             seen.setdefault(j["id"], j)
-                    print(f"  → {len(seen) - before} RSS results (Remote)")
+                    print(f"  → {len(seen) - before} RSS fallback results (Remote)")
                 else:
                     print(f"  → {len(seen) - before} API results (Remote)")
 
