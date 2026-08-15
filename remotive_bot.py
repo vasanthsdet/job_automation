@@ -11,7 +11,7 @@ import random
 import requests
 from datetime import datetime, timezone, timedelta
 
-from config import JOB_SEARCH_KEYWORDS, MIN_HOURLY_RATE, LISTED_AT_SECONDS
+from config import JOB_SEARCH_KEYWORDS, MIN_HOURLY_RATE, LISTED_AT_SECONDS, title_is_relevant
 from job_tracker import JobTracker
 from utils import meets_rate
 
@@ -22,16 +22,9 @@ _HEADERS = {
     "Accept":     "application/json",
 }
 
-_QA_WORDS = {"qa", "qe", "quality", "test", "sdet", "automation", "tester", "uat"}
-
 _NON_US = {"europe", "uk", "united kingdom", "india", "pakistan", "canada",
            "australia", "latam", "africa", "asia", "apac", "germany", "france",
            "netherlands", "poland", "ukraine", "brazil", "mexico", "singapore"}
-
-
-def _is_qa_title(title: str) -> bool:
-    t = title.lower()
-    return any(w in t for w in _QA_WORDS)
 
 
 def _is_us_eligible(job: dict) -> bool:
@@ -71,12 +64,12 @@ class RemotiveBot:
             if i > 0:
                 time.sleep(random.uniform(2, 4))
 
-            print(f"[Remotive] Search: '{kw}' Remote QA")
+            print(f"[Remotive] Search: '{kw}' Remote")
             before = len(seen)
 
             for job in self._fetch(kw):
                 jid = str(job.get("id", ""))
-                if not jid or not _is_qa_title(job.get("title", "")):
+                if not jid or not title_is_relevant(job.get("title", "")):
                     continue
                 if not _is_us_eligible(job):
                     continue
@@ -92,7 +85,7 @@ class RemotiveBot:
 
                 seen[jid] = job
 
-            print(f"  → {len(seen) - before} new US-eligible QA results")
+            print(f"  → {len(seen) - before} new US-eligible results")
 
         print(f"[Remotive] {len(seen)} unique jobs found")
         return list(seen.values())

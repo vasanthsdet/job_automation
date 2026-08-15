@@ -10,7 +10,10 @@ import httpx
 import re
 from datetime import datetime, timezone, timedelta
 
-from config import JOB_SEARCH_KEYWORD, MIN_HOURLY_RATE, LISTED_AT_SECONDS
+from config import (
+    JOB_SEARCH_KEYWORD, MIN_HOURLY_RATE, LISTED_AT_SECONDS,
+    USING_CUSTOM_KEYWORDS, title_is_relevant,
+)
 from job_tracker import JobTracker
 from utils import meets_rate
 
@@ -22,11 +25,9 @@ _HEADERS = {
     "Referer": "https://remoteok.com/",
 }
 
-# Tags RemoteOK uses for QA/testing roles
+# Tags RemoteOK uses for QA/testing roles — only applied under the QA default,
+# since custom keyword searches have no equivalent tag vocabulary.
 _QA_TAGS = {"qa", "testing", "sdet", "quality-assurance", "test", "automation", "selenium", "cypress"}
-
-# Keywords to match in job title
-_QA_TITLE_KEYWORDS = ["qa", "quality", "test", "sdet", "automation engineer"]
 
 
 _US_LOCATIONS = {"usa", "united states", "us only", "north america", "u.s.",
@@ -45,10 +46,14 @@ def _is_us_eligible(job: dict) -> bool:
     return True  # unknown / worldwide / explicitly US → allow
 
 
-def _is_qa_job(job: dict) -> bool:
-    tags  = {t.lower() for t in (job.get("tags") or [])}
-    title = job.get("position", "").lower()
-    return bool(tags & _QA_TAGS) or any(kw in title for kw in _QA_TITLE_KEYWORDS)
+def _is_relevant_job(job: dict) -> bool:
+    title = job.get("position", "")
+    if title_is_relevant(title):
+        return True
+    if not USING_CUSTOM_KEYWORDS:
+        tags = {t.lower() for t in (job.get("tags") or [])}
+        return bool(tags & _QA_TAGS)
+    return False
 
 
 def _strip_html(text: str) -> str:
@@ -75,7 +80,7 @@ class RemoteOKBot:
         results = []
 
         for job in listings:
-            if not _is_qa_job(job):
+            if not _is_relevant_job(job):
                 continue
             if not _is_us_eligible(job):
                 continue
@@ -90,7 +95,8 @@ class RemoteOKBot:
             results.append(job)
 
         hours = LISTED_AT_SECONDS // 3600
-        print(f"[RemoteOK] {len(results)} QA/SDET remote jobs in last {hours} hour(s)")
+        label = "matching" if USING_CUSTOM_KEYWORDS else "QA/SDET"
+        print(f"[RemoteOK] {len(results)} {label} remote jobs in last {hours} hour(s)")
         return results
 
     def run(self):

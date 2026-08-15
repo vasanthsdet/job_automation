@@ -12,7 +12,7 @@ import requests
 
 from config import (
     JOB_SEARCH_KEYWORDS, PRIMARY_LOCATION,
-    INCLUDE_REMOTE, MIN_HOURLY_RATE, LISTED_AT_SECONDS,
+    INCLUDE_REMOTE, MIN_HOURLY_RATE, LISTED_AT_SECONDS, title_is_relevant,
 )
 from job_tracker import JobTracker
 from utils import meets_rate
@@ -32,14 +32,7 @@ _HEADERS = {
     "x-requested-with": "XMLHttpRequest",
 }
 
-_QA_WORDS = {"qa", "qe", "quality", "test", "sdet", "automation", "tester", "uat"}
-
 _STATE = PRIMARY_LOCATION.split(",")[0].strip()   # e.g. "Texas"
-
-
-def _is_qa_title(title: str) -> bool:
-    t = title.lower()
-    return any(w in t for w in _QA_WORDS)
 
 
 class WellfoundBot:
@@ -116,7 +109,7 @@ class WellfoundBot:
             before = len(seen)
             for job in self._fetch(kw, location=_STATE):
                 jid = str(job.get("id", ""))
-                if jid and _is_qa_title(job.get("title", "")):
+                if jid and title_is_relevant(job.get("title", "")):
                     seen[jid] = job
             print(f"  → {len(seen) - before} results")
 
@@ -127,7 +120,7 @@ class WellfoundBot:
                 before = len(seen)
                 for job in self._fetch(kw, remote=True):
                     jid = str(job.get("id", ""))
-                    if jid and _is_qa_title(job.get("title", "")):
+                    if jid and title_is_relevant(job.get("title", "")):
                         seen.setdefault(jid, job)
                 print(f"  → {len(seen) - before} new Remote results")
 

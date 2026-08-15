@@ -25,8 +25,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 ssl._create_default_https_context = ssl._create_unverified_context
 
 from config import (
-    JOB_SEARCH_KEYWORDS, PRIMARY_LOCATION,
-    INCLUDE_REMOTE, MIN_HOURLY_RATE, LISTED_AT_SECONDS,
+    JOB_SEARCH_KEYWORDS, USING_CUSTOM_KEYWORDS, PRIMARY_LOCATION,
+    INCLUDE_REMOTE, MIN_HOURLY_RATE, LISTED_AT_SECONDS, title_is_relevant,
 )
 from job_tracker import JobTracker
 from utils import meets_rate
@@ -45,12 +45,6 @@ _HEADERS = {
 
 _MAX_DAYS  = max(1, LISTED_AT_SECONDS // 86400)
 _STATE     = PRIMARY_LOCATION.split(",")[0].strip()   # "Texas"
-_QA_WORDS  = {"qa", "qe", "quality", "test", "sdet", "automation", "tester", "uat"}
-
-
-def _is_qa_title(title: str) -> bool:
-    t = title.lower()
-    return any(w in t for w in _QA_WORDS)
 
 
 class AdzunaBot:
@@ -109,14 +103,17 @@ class AdzunaBot:
     def search_jobs(self) -> list[dict]:
         seen: dict[str, dict] = {}
 
-        # Use ADZUNA_KEYWORDS if passed at runtime, otherwise fall back to broad QA defaults
+        # ADZUNA_KEYWORDS is an Adzuna-specific override; otherwise use the
+        # shared JOB_SEARCH_KEYWORDS (--technologies), falling back to broad
+        # QA defaults only when neither was customized.
         import os
         _raw = os.getenv("ADZUNA_KEYWORDS", "").strip()
-        adzuna_keywords = (
-            [k.strip() for k in _raw.split(",") if k.strip()]
-            if _raw
-            else self._DEFAULT_KEYWORDS
-        )
+        if _raw:
+            adzuna_keywords = [k.strip() for k in _raw.split(",") if k.strip()]
+        elif USING_CUSTOM_KEYWORDS:
+            adzuna_keywords = JOB_SEARCH_KEYWORDS
+        else:
+            adzuna_keywords = self._DEFAULT_KEYWORDS
 
         for i, kw in enumerate(adzuna_keywords):
             if i > 0:
@@ -127,7 +124,7 @@ class AdzunaBot:
             before = len(seen)
             for j in self._fetch(kw, _STATE):
                 jid = str(j.get("id", ""))
-                if jid and _is_qa_title(j.get("title", "")):
+                if jid and title_is_relevant(j.get("title", "")):
                     seen[jid] = j
             print(f"  → {len(seen) - before} TX results")
 
@@ -138,7 +135,7 @@ class AdzunaBot:
                 before = len(seen)
                 for j in self._fetch(kw, "remote"):
                     jid = str(j.get("id", ""))
-                    if jid and _is_qa_title(j.get("title", "")):
+                    if jid and title_is_relevant(j.get("title", "")):
                         seen.setdefault(jid, j)
                 print(f"  → {len(seen) - before} new Remote results")
 

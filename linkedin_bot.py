@@ -24,7 +24,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from config import (
     LINKEDIN_EMAIL, LINKEDIN_PASSWORD,
     JOB_SEARCH_KEYWORDS, PRIMARY_LOCATION, INCLUDE_REMOTE,
-    LISTED_AT_SECONDS,
+    LISTED_AT_SECONDS, title_is_relevant,
 )
 from job_tracker import JobTracker
 
@@ -146,12 +146,6 @@ class LinkedInBot:
             print(f"  [LinkedIn] Search error ({label}): {e}")
             return []
 
-    _QA_TITLE_WORDS = {"qa", "qe", "quality", "test", "sdet", "automation", "tester", "uat"}
-
-    def _is_qa_title(self, title: str) -> bool:
-        t = title.lower()
-        return any(w in t for w in self._QA_TITLE_WORDS)
-
     PAGE_SIZE = 25   # results per API call (LinkedIn max ~25)
     MAX_PAGES = 7    # pages per search → up to 175 results per keyword per location
 
@@ -189,9 +183,9 @@ class LinkedInBot:
                 listed_at=LISTED_AT_SECONDS,
             ):
                 jid = self._job_id(j)
-                if jid and self._is_qa_title(self._job_title(j)):
+                if jid and title_is_relevant(self._job_title(j)):
                     seen[jid] = j
-            print(f"  → {len(seen) - before} new QA/SDET results (Texas)")
+            print(f"  → {len(seen) - before} new relevant results (Texas)")
 
             # ── Remote USA ────────────────────────────────────
             if INCLUDE_REMOTE:
@@ -206,9 +200,9 @@ class LinkedInBot:
                     listed_at=LISTED_AT_SECONDS,
                 ):
                     jid = self._job_id(j)
-                    if jid and self._is_qa_title(self._job_title(j)):
+                    if jid and title_is_relevant(self._job_title(j)):
                         seen[jid] = j
-                print(f"  → {len(seen) - before} new Remote USA QA/SDET results")
+                print(f"  → {len(seen) - before} new Remote USA relevant results")
 
         all_jobs   = list(seen.values())
         easy_count = sum(1 for j in all_jobs if self._is_easy_apply(j))
